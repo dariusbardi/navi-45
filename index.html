@@ -118,7 +118,7 @@ try{S.recent=JSON.parse(localStorage.getItem('navi45r')||'[]')}catch(e){}
 
 // ---------- Karte ----------
 const map=L.map('map',{zoomControl:false,attributionControl:true}).setView([48.137,11.575],13);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:20,attribution:'© OpenStreetMap · © CARTO · Route: Valhalla/FOSSGIS'}).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap-Mitwirkende · Route: Valhalla/FOSSGIS'}).addTo(map);
 let mMe=null,accC=null,mDest=null,lines=[],mcLayer=L.layerGroup().addTo(map);
 const pinIcon=(c,t='')=>L.divIcon({html:`<div class="pin" style="background:${c}"><span>${t}</span></div>`,className:'',iconSize:[30,30],iconAnchor:[15,32]});
 map.on('dragstart',()=>{S.follow=false;setLocIcon();if(S.navi)document.body.classList.add('free')});
@@ -257,13 +257,19 @@ async function mcSearch(){
   const c=S.me||{lat:map.getCenter().lat,lon:map.getCenter().lng};
   if(!S.me)startWatch();
   body(`<h2>McDonald's</h2><div class="sub">Suche in der Nähe …</div>`,true);mcLayer.clearLayers();
-  const q=`[out:json][timeout:25];nwr["amenity"="fast_food"]["brand"~"McDonald",i](around:20000,${c.lat},${c.lon});out center 40;`;
-  let els;
-  try{els=(await (await fetch(OVERPASS,{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}})).json()).elements}
+  // Drive-in-Angaben aus OpenStreetMap (Overpass) – nur als Zusatz, mit Zeitlimit, weil der Server oft überlastet ist
+  const dtInfo={};
+  const dtJob=(async()=>{const ctl=new AbortController();setTimeout(()=>ctl.abort(),9000);
+    try{const q=`[out:json][timeout:8];nwr["amenity"="fast_food"]["brand"~"McDonald",i](around:25000,${c.lat},${c.lon});out tags 60;`;
+      const j=await (await fetch(OVERPASS+'?data='+encodeURIComponent(q),{signal:ctl.signal})).json();
+      j.elements.forEach(e=>dtInfo[e.type[0].toUpperCase()+e.id]=e.tags.drive_through||'')}catch(e){}})();
+  let list=[];
+  try{const j=await (await fetch(`${PHOTON}/api/?q=McDonald%27s&osm_tag=amenity:fast_food&lat=${c.lat}&lon=${c.lon}&limit=15&lang=de`)).json();
+    list=j.features.filter(f=>/mc ?donald/i.test(f.properties.name||'')).map(f=>{const p=f.properties,lat=f.geometry.coordinates[1],lon=f.geometry.coordinates[0];
+      return{id:p.osm_type+p.osm_id,lat,lon,name:"McDonald's",sub:[[p.street,p.housenumber].filter(Boolean).join(' '),p.city||p.town||p.village].filter(Boolean).join(', '),air:hav([c.lat,c.lon],[lat,lon])}}).filter(x=>x.air<25000)}
   catch(e){body(`<h2>McDonald's</h2><div class="note err">Die Suche ist gerade nicht erreichbar. Bitte gleich nochmal.</div><button class="big gray" id="bk">Zurück</button>`,true);$('bk').onclick=home;return}
-  let list=els.map(e=>{const t=e.tags||{},lat=e.lat??e.center?.lat,lon=e.lon??e.center?.lon;
-    return{lat,lon,dt:t.drive_through,name:"McDonald's",sub:[[t['addr:street'],t['addr:housenumber']].filter(Boolean).join(' '),t['addr:city']].filter(Boolean).join(', '),air:hav([c.lat,c.lon],[lat,lon])}}).filter(x=>x.lat);
-  if(!list.length){body(`<h2>McDonald's</h2><div class="note">Im Umkreis von 20 km nichts gefunden.</div><button class="big gray" id="bk">Zurück</button>`,true);$('bk').onclick=home;return}
+  if(!list.length){body(`<h2>McDonald's</h2><div class="note">Im Umkreis von 25 km nichts gefunden.</div><button class="big gray" id="bk">Zurück</button>`,true);$('bk').onclick=home;return}
+  await dtJob;list.forEach(x=>x.dt=dtInfo[x.id]);
   const yes=list.filter(x=>x.dt==='yes');const cand=(yes.length?yes:list).sort((a,b)=>a.air-b.air).slice(0,4);
   body(`<h2>McDonald's</h2><div class="sub">Prüfe die 45-km/h-Strecken …</div>`,true);
   await Promise.all(cand.map(async x=>{try{const r=await getRoute(c,x);x.sec=r.sec;x.km=r.km}catch(e){x.sec=1e9}}));
@@ -271,7 +277,7 @@ async function mcSearch(){
   cand.forEach((x,i)=>L.marker([x.lat,x.lon],{icon:pinIcon('#ffbc0d','M')}).on('click',()=>pick(i)).addTo(mcLayer));
   const pick=i=>{const x=cand[i];place({name:"McDonald's"+(x.dt==='yes'?' Drive-in':''),sub:x.sub,lat:x.lat,lon:x.lon},true)};
   body(`<div class="head"><div><h2>McDonald's</h2><div class="sub">Sortiert nach Fahrzeit mit 45 km/h</div></div><button class="close" id="x">✕</button></div>
-  ${yes.length?'':'<div class="note">Bei keinem Restaurant hier ist ein Drive-in in der Karte eingetragen – das heißt nicht, dass es keinen gibt.</div>'}
+  ${yes.length?'':Object.keys(dtInfo).length?'<div class="note">Bei keinem Restaurant hier ist ein Drive-in in der Karte eingetragen – das heißt nicht, dass es keinen gibt.</div>':'<div class="note">Die Drive-in-Angaben sind gerade nicht abrufbar – hier die nächsten Restaurants.</div>'}
   <ul class="list">${cand.map((x,i)=>`<li data-i="${i}"><span class="ic" style="background:#ffbc0d;color:#c8102e;font-weight:800">M</span><span class="tx">${esc(x.sub||x.name)}<small>${x.dt==='yes'?'Drive-in':x.dt==='no'?'Kein Drive-in':'Drive-in nicht eingetragen'}</small></span><span class="rt">${x.sec<1e9?fmtTime(x.sec)+'<br>'+x.km.toFixed(1).replace('.',',')+' km':'keine Route'}</span></li>`).join('')}</ul>`);
   $('x').onclick=()=>{mcLayer.clearLayers();home()};
   $('body').querySelector('.list').onclick=e=>{const li=e.target.closest('[data-i]');if(li)pick(+li.dataset.i)};
