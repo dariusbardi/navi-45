@@ -493,7 +493,7 @@ async function catSearch(cat){
     list.forEach(x=>{if(typeof x.id==='string')x.id=osmNum(x.id[0],+x.id.slice(1))});}
   if(!$('x'))return;
   list=list.filter(x=>x.air<30000).sort((a,b)=>a.air-b.air).slice(0,cat.scout?40:30);
-  list.forEach(x=>{x.name=(x.name||'').replace(/\b[A-Z]{2}\*?[A-Z0-9]{3}\*?[A-Z0-9]{3,}\b[;,\s]*/g,'').trim()||cat.label});
+  if(cat.id==='charge')list.forEach(x=>{x.name=(x.name||'').replace(/\b[A-Z]{2}\*?[A-Z0-9]{3}\*?[A-Z0-9]{3,}\b[;,\s]*/g,'').trim()||cat.label});
   if(cat.id==='charge'){await loadSockets(list);if(isEV())list.sort((a,b)=>({ok:0,unknown:1,no:2}[sockFit(a.sock)]-{ok:0,unknown:1,no:2}[sockFit(b.sock)])||a.air-b.air);list=list.slice(0,30)}
   if(!list.length){body(`<div class="head"><div><h2>${esc(cat.label)}</h2><div class="sub">Nichts gefunden ${near}.</div></div><button class="x" id="x">✕</button></div>`,'peek');$('x').onclick=()=>home();return}
   // Fahrzeiten mit 45 km/h für alle auf einmal
