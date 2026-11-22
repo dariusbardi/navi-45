@@ -139,6 +139,9 @@ body.navi #navMute{display:grid}
 #navZoom{display:none;position:fixed;right:10px;bottom:calc(env(safe-area-inset-bottom) + 166px);z-index:30;flex-direction:column;border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
 #navZoom button{width:46px;height:46px;font-size:24px;font-weight:600;color:var(--blue)}#navZoom button+button{border-top:1px solid var(--line)}
 body.navi #navZoom{display:flex}
+#chargeAsk{position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom) + 100px);z-index:35;max-width:520px;margin:0 auto;border-radius:18px;padding:14px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+#chargeAsk[hidden]{display:none}
+.cabar{height:4px;border-radius:2px;background:var(--fill);margin-top:10px;overflow:hidden}.cabar i{display:block;height:100%;width:100%;background:#30b0c7;transform-origin:left}
 .lim{width:24px;height:24px;border-radius:50%;background:#fff;border:3px solid #e30613;display:grid;place-items:center;font:800 10px/1 -apple-system,Arial,sans-serif;color:#111;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 body.navi.free #recenter{display:block}
 /* Marker */
@@ -199,6 +202,7 @@ body.car #limit{display:none}
 <div id="sheet" class="glass"><div class="grabzone" id="grab"><div class="grab"></div></div><div id="body"></div></div>
 
 <div id="nav"><div class="sign"><svg id="nIcon" viewBox="0 0 64 64" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></svg><div><div id="nDist">–</div><div id="nText">Route wird gestartet …</div><div id="nSig" hidden></div></div></div><div id="nThen" hidden></div></div>
+<div id="chargeAsk" class="glass" hidden role="alertdialog" aria-label="Akku wird knapp"><div style="display:flex;gap:12px;align-items:center"><span class="ic" style="background:#30b0c7;color:#fff;width:40px;height:40px"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg></span><div style="flex:1"><b id="caT">Akku wird knapp</b><div class="sub" id="caS"></div></div></div><button class="btn go" id="caYes" style="margin-top:10px;height:46px">Laden – Ladestation anfahren</button><div class="cabar"><i id="caBar"></i></div></div>
 <button id="recenter" class="glass">Zentrieren</button>
 <div id="navZoom" class="glass"><button id="zIn" aria-label="Näher heran">+</button><button id="zOut" aria-label="Weiter weg">−</button></div>
 <button id="navMute" class="glass" aria-label="Ansagen an oder aus"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/><path class="mx" d="M17 9l5 6M22 9l-5 6" style="display:none"/></svg></button>
@@ -207,6 +211,7 @@ body.car #limit{display:none}
   <div class="st"><b id="nEta">–</b><span>Ankunft</span></div>
   <div class="st"><b id="nMin">–</b><span>Min.</span></div>
   <div class="st"><b id="nKm">–</b><span>km</span></div>
+  <div class="st" id="nBatBox" hidden><b id="nBat">–</b><span>Akku</span></div>
   <button class="end" id="btnStop">Beenden</button>
 </div></div>
 
@@ -318,20 +323,50 @@ const GEO={alt:EMPTY,route:EMPTY,done:EMPTY};
 // 3D-Auto (Ebenen mit Höhe), weich animiert
 // Fahrzeug-Modelle als 3D-Körper: [Umriss in Metern (x rechts, y vorne), Farbe, Boden, Höhe]
 const R4=(x0,y0,x1,y1)=>[[x0,y0],[x1,y0],[x1,y1],[x0,y1]];
-const MODELS={
- arrow:{len:9,parts:[[[[0,8.6],[5.6,-6.4],[0,-3],[-5.6,-6.4]],'#ffffff',0.3,2.4],[[[0,7.2],[4.4,-5],[0,-2.2],[-4.4,-5]],'#1a73e8',2.4,3.6]]},
- rocks:{len:7,parts:[[R4(-3.6,-5.8,3.6,5.8),'#2b2b2e',0.5,2.4],[R4(-3.5,-5.5,3.5,5.5),'#d6d8dc',2.4,6.6],[R4(-3.55,-0.9,3.55,0.9),'#ffcc00',2.6,6.4],
-   [R4(-3.1,4.9,3.1,5.62),'#0b2e5c',3.6,6.1],[R4(-3.1,-5.62,3.1,-4.9),'#0b2e5c',3.6,6.1],[R4(-3.56,-4.2,3.56,4.2),'#16324f',3.9,5.9],
-   [R4(-3.4,-5.3,3.4,5.3),'#1c1c1e',6.6,7.0],[R4(-3.3,5.5,-1.8,5.95),'#fff7cc',1.4,2.3],[R4(1.8,5.5,3.3,5.95),'#fff7cc',1.4,2.3],
-   [R4(-3.3,-5.95,-1.9,-5.5),'#ff3b30',1.4,2.2],[R4(1.9,-5.95,3.3,-5.5),'#ff3b30',1.4,2.2]]},
- car:{len:8,parts:[[[[-3.6,-7.2],[3.6,-7.2],[3.9,-6.2],[3.9,6],[3.2,7.6],[-3.2,7.6],[-3.9,6],[-3.9,-6.2]],'#1a73e8',0.7,3.6],
-   [[[-3.1,-4.6],[3.1,-4.6],[2.8,2.6],[-2.8,2.6]],'#0b2e5c',3.6,6.4],[[[-2.5,-3.9],[2.5,-3.9],[2.3,1.8],[-2.3,1.8]],'#f4f8ff',6.4,6.9],
-   [R4(-3.4,6.4,-1.8,7.4),'#fff7cc',2.2,3.3],[R4(1.8,6.4,3.4,7.4),'#fff7cc',2.2,3.3],[R4(-3.6,-7.3,-1.9,-6.8),'#ff3b30',2.2,3.2],[R4(1.9,-7.3,3.6,-6.8),'#ff3b30',2.2,3.2]]}};
+// Rechteck mit abgeschrägten Ecken (Draufsicht) – für weichere Karosserieformen
+const CH=(x0,y0,x1,y1,c)=>[[x0+c,y0],[x1-c,y0],[x1,y0+c],[x1,y1-c],[x1-c,y1],[x0+c,y1],[x0,y1-c],[x0,y0+c]];
+const MIRX=parts=>parts.flatMap(p=>[p,[p[0].map(([x,y])=>[-x,y]).reverse(),p[1],p[2],p[3]]]);
+// Opel Rocks-e nach Originalmaßen (2,41 × 1,39 × 1,52 m, Radstand 1,73 m) – Maßstab 1 m = 5 Einheiten
+const ROCKS=[
+ ...MIRX([[R4(2.62,2.95,3.62,5.75),'#141414',0,2.8],[R4(2.62,-5.75,3.62,-2.95),'#141414',0,2.8],      // Räder
+          [R4(2.72,3.45,3.66,5.25),'#9aa0a6',0.9,1.9],[R4(2.72,-5.25,3.66,-3.45),'#9aa0a6',0.9,1.9]]),// Felgen
+ [CH(-3.42,-5.95,3.42,5.95,1.0),'#3a3d42',0.75,2.2],                         // Schweller unten (Kunststoff)
+ [CH(-3.47,-6.02,3.47,6.02,1.1),'#d5d8dd',2.2,4.3],                          // Karosserie (Türen)
+ [R4(-3.3,5.9,3.3,6.2),'#2a2c30',0.8,1.7],[R4(-3.3,-6.2,3.3,-5.9),'#2a2c30',0.8,1.7],   // Stoßfänger
+ [R4(-2.9,5.96,2.9,6.12),'#0d0d0f',2.35,4.15],                               // Opel Vizor (schwarze Front)
+ [R4(-2.8,6.06,-1.15,6.18),'#eaf6ff',3.7,3.95],[R4(1.15,6.06,2.8,6.18),'#eaf6ff',3.7,3.95],  // LED-Tagfahrlicht
+ [R4(-0.36,6.1,0.36,6.17),'#ffffff',2.9,3.45],                               // Opel-Blitz
+ [R4(-2.9,-6.12,2.9,-5.96),'#141414',2.35,4.15],                             // Heckblende
+ [R4(-3.0,-6.18,-1.3,-6.06),'#ff2d2d',3.55,3.85],[R4(1.3,-6.18,3.0,-6.06),'#ff2d2d',3.55,3.85], // Rückleuchten
+ [CH(-3.3,-5.72,3.3,5.72,0.9),'#1d2a3a',4.3,6.6],                            // Glaskanzel rundum
+ ...MIRX([[R4(2.78,5.12,3.38,5.78),'#d5d8dd',4.3,6.65],[R4(2.78,-5.78,3.38,-5.12),'#d5d8dd',4.3,6.65], // A- und C-Säulen
+          [R4(3.18,-0.55,3.38,0.55),'#d5d8dd',4.3,6.65],                    // B-Säule
+          [R4(3.47,3.35,4.1,3.95),'#1c1c1e',4.4,5.1]]),                     // Außenspiegel
+ [CH(-3.38,-5.86,3.38,5.86,1.0),'#c9ccd1',6.6,7.2],                          // Dach (Wagenfarbe)
+ [CH(-2.6,-4.4,2.6,4.6,0.7),'#22324a',7.2,7.32],                             // Glasdach
+ [R4(-3.0,-5.5,-2.75,5.5),'#2a2c30',7.2,7.5],[R4(2.75,-5.5,3.0,5.5),'#2a2c30',7.2,7.5]];  // Dachreling                           // Dachmulde
+const SEDAN=[
+ ...MIRX([[R4(3.1,3.6,4.05,6.4),'#141414',0,2.9],[R4(3.1,-6.2,4.05,-3.4),'#141414',0,2.9],
+          [R4(3.2,4.2,4.1,5.8),'#b0b5bb',0.9,2.0],[R4(3.2,-5.6,4.1,-4.0),'#b0b5bb',0.9,2.0]]),
+ [CH(-3.85,-7.6,3.85,7.6,1.4),'#1d4f91',0.8,2.6],                             // Unterbau
+ [CH(-3.9,-7.4,3.9,7.3,1.6),'#1a73e8',2.6,3.4],                               // Gürtellinie
+ [CH(-3.6,1.8,3.6,7.0,1.4),'#1a73e8',3.4,3.7],                                // Motorhaube
+ [CH(-3.7,-7.0,3.7,-4.3,1.2),'#1a73e8',3.4,3.9],                              // Kofferraum
+ [CH(-3.6,-4.6,3.6,2.3,0.9),'#1d2a3a',3.4,4.7],                               // Scheiben unten
+ [CH(-3.3,-4.0,3.3,1.3,0.9),'#1d2a3a',4.7,5.7],                               // Scheiben oben (Schräge)
+ [CH(-3.2,-3.6,3.2,0.8,0.9),'#1a73e8',5.7,6.15],                              // Dach
+ ...MIRX([[R4(3.5,1.0,4.4,1.6),'#1a73e8',4.0,4.6],
+          [R4(1.4,7.05,3.4,7.65),'#eaf6ff',2.8,3.3],[R4(1.6,-7.6,3.5,-7.2),'#ff2d2d',3.0,3.6]])];
+const ARROW=[
+ [[[0,9.2],[6.2,-7],[0,-3.4],[-6.2,-7]],'#ffffff',0.2,1.6],
+ [[[0,7.8],[4.9,-5.6],[0,-2.6],[-4.9,-5.6]],'#1a73e8',1.6,3.0],
+ [[[0,6.4],[3.6,-4.2],[0,-1.9],[-3.6,-4.2]],'#4da3ff',3.0,3.5]];
+const MODELS={arrow:{len:9.5,parts:ARROW},rocks:{len:6.6,parts:ROCKS},car:{len:8,parts:SEDAN}};
 const model=()=>MODELS[CFG.puck]||MODELS[isEV()?'rocks':'arrow'];
-function carGeo(lat,lon,h){const c=Math.cos(rad(h)),s_=Math.sin(rad(h)),kLon=111320*Math.cos(rad(lat)),K=Math.min(4,Math.max(0.6,1.35*Math.pow(2,16.8-map.getZoom())));
+function carGeo(lat,lon,h){const c=Math.cos(rad(h)),s_=Math.sin(rad(h)),kLon=111320*Math.cos(rad(lat)),K=Math.min(4,Math.max(0.6,1.35*Math.pow(2,16.8-map.getZoom())))*(CFG.puck==='rocks'||(!CFG.puck&&isEV())?1.15:1);
   const tr=([x,y])=>{x*=K;y*=K;const e=x*c+y*s_,n=-x*s_+y*c;return[lon+e/kLon,lat+n/111320]};const M=model();
   const feats=M.parts.map(([pts,col,b,ht])=>({type:'Feature',properties:{c:col,b:b*K,h:ht*K},geometry:{type:'Polygon',coordinates:[[...pts.map(tr),tr(pts[0])]]}}));
-  const L=M.len,sh=[[-4.4,-L],[4.4,-L],[4.4,L],[-4.4,L]].map(([x,y])=>tr([x+0.7,y-0.7]));
+  const L=M.len,W=M===MODELS.car?4.6:M===MODELS.rocks?4.0:5.2,sh=[[-W,-L],[W,-L],[W,L],[-W,L]].map(([x,y])=>tr([x+0.9,y-0.9]));
   return{car:{type:'FeatureCollection',features:feats},shadow:{type:'FeatureCollection',features:[{type:'Feature',properties:{},geometry:{type:'Polygon',coordinates:[[...sh,sh[0]]]}}]}}}
 function carShow(on){['car3d','carShadow'].forEach(id=>map.getLayer(id)&&map.setLayoutProperty(id,'visibility',on?'visible':'none'))}
 
@@ -836,6 +871,31 @@ async function alongRoute(kind,maxKm){
   $('body').querySelectorAll('[data-v]').forEach(li=>li.onclick=()=>{const x=list[+li.dataset.v];S.via={name:x.name,lat:x.lat,lon:x.lon,cat:x.cat,sock:x.sock};routeTo(S.dest)});
 }
 
+// ---------- Akku während der Fahrt (Schätzung über gefahrene Kilometer) ----------
+const BAT={start:100,odo:0,last:null,askedAt:0,askedPct:999,timer:null};
+function batNow(){return Math.max(0,BAT.start-BAT.odo/1000/kmPerPct())}
+function batTrack(lat,lon){if(BAT.last){const d=hav(BAT.last,[lat,lon]);if(d<400)BAT.odo+=d}BAT.last=[lat,lon]}
+function batUI(leftM){if(!isEV()){$('nBatBox').hidden=true;return}$('nBatBox').hidden=false;const b=batNow();$('nBat').textContent=Math.round(b)+' %';$('nBat').style.color=b<20?'var(--red)':b<35?'#ff9f0a':'';
+  if($('chargeAsk').hidden&&!S.chargeBusy&&!(S.via&&S.via.cat==='charge')){const rangeLeft=b*kmPerPct(),need=leftM/1000;
+    const low=rangeLeft<need*1.1+3||b<=15;const again=Date.now()-BAT.askedAt>10*60000||b<BAT.askedPct-10;
+    if(low&&again)askCharge(b,rangeLeft,need)}}
+function askCharge(b,rangeLeft,need){BAT.askedAt=Date.now();BAT.askedPct=b;
+  $('caT').textContent=`Akku wird knapp – ${Math.round(b)} %`;$('caS').textContent=rangeLeft<need?`Reicht noch etwa ${Math.round(rangeLeft)} km, bis zum Ziel sind es ${Math.round(need)} km.`:`Noch etwa ${Math.round(rangeLeft)} km Reichweite.`;
+  const box=$('chargeAsk'),bar=$('caBar');box.hidden=false;ping();setTimeout(ping,700);say('Akku wird knapp. Soll ich eine Ladestation anfahren?',true);
+  bar.style.transition='none';bar.style.transform='scaleX(1)';requestAnimationFrame(()=>{bar.style.transition='transform 10s linear';bar.style.transform='scaleX(0)'});
+  clearTimeout(BAT.timer);BAT.timer=setTimeout(()=>{box.hidden=true},10000);   // keine Reaktion = Nein
+  $('caYes').onclick=()=>{clearTimeout(BAT.timer);box.hidden=true;chargeNow()}}
+async function chargeNow(){
+  if(!S.me)return;S.chargeBusy=true;$('nText').textContent='Suche Ladestation …';
+  try{const me=S.me;let got=await scoutAt(me.lat,me.lon,['charging_station']);got.forEach(g=>g.air=hav([me.lat,me.lon],[g.lat,g.lon]));got.sort((a,b)=>a.air-b.air);got=got.slice(0,25);
+    await loadSockets(got);const ok=got.filter(g=>sockFit(g.sock)==='ok');const pick=(ok.length?ok:got.filter(g=>sockFit(g.sock)==='unknown'))[0];
+    if(!pick){say('Leider keine passende Ladestation in der Nähe gefunden.',true);S.chargeBusy=false;return}
+    pick.name=(pick.name||'').replace(/\b[A-Z]{2}\*?[A-Z0-9]{3}\*?[A-Z0-9]{3,}\b[;,\s]*/g,'').trim()||'Ladestation';
+    S.via={name:pick.name,lat:pick.lat,lon:pick.lon,cat:'charge',sock:pick.sock};S.from=null;
+    S.routes=await getRoutes({lat:me.lat,lon:me.lon},S.dest,0);S.sel=0;drawRoutes(false);S.lastIdx=0;S.said={};NV.a0=NV.a1=0;
+    say(`Neue Route über ${pick.name}, ${fmtDist(pick.air).replace(' m',' Meter').replace(' km',' Kilometer')} entfernt.`,true);
+  }catch(e){say('Die Ladestation konnte gerade nicht gesucht werden.',true)}S.chargeBusy=false}
+
 // ---------- Pfeile ----------
 function arrow(t,size,col='#fff',w=7){
   const a={8:0,7:0,17:0,22:0,25:0,1:0,2:0,3:0,9:45,18:45,20:45,23:25,10:90,11:135,12:180,13:180,14:-135,15:-90,16:-45,19:-45,21:-45,24:-25}[t]??0;
@@ -915,7 +975,7 @@ document.addEventListener('visibilitychange',keepAwake);
 function startNavi(sim){
   if(!route())return;unlockSpeech();
   document.body.classList.add('navi');document.body.classList.remove('free');
-  S.navi=true;S.lastIdx=0;S.off=0;S.said={};S.isSim=sim;NV.zAdj=0;S.camFree=false;S.camB=null;S.fbHits=0;NV.carH=NV.camB=null;NV.off=null;NV.camZ=map.getZoom();NV.zT=17;if(meEl)meEl.style.visibility='hidden';keepAwake();drawFavs();showSign(0);loadAttrs(route());
+  S.navi=true;S.lastIdx=0;S.off=0;S.said={};S.isSim=sim;NV.zAdj=0;BAT.start=CFG.battery;BAT.odo=0;BAT.last=null;BAT.askedAt=0;BAT.askedPct=999;$('chargeAsk').hidden=true;S.camFree=false;S.camB=null;S.fbHits=0;NV.carH=NV.camB=null;NV.off=null;NV.camZ=map.getZoom();NV.zT=17;if(meEl)meEl.style.visibility='hidden';keepAwake();drawFavs();showSign(0);loadAttrs(route());
   setGeo('alt',null);
   const first=route().man[0];
   say((sim?'Probefahrt. ':'')+(first?.verbal_pre_transition_instruction||first?.instruction||'Los geht’s.'));
@@ -924,7 +984,7 @@ function startNavi(sim){
   else{startWatch();if(S.me)onPos(S.me.lat,S.me.lon)}
 }
 function stopNavi(){
-  S.navi=false;S.isSim=false;document.body.classList.remove('navi','free');clearInterval(S.sim);S.sim=null;drawFavs();showSign(0);carShow(false);$('warn').hidden=true;if(meEl)meEl.style.visibility='';
+  S.navi=false;S.isSim=false;document.body.classList.remove('navi','free');clearInterval(S.sim);S.sim=null;drawFavs();showSign(0);carShow(false);$('warn').hidden=true;$('chargeAsk').hidden=true;clearTimeout(BAT.timer);if(isEV()&&BAT.odo>200){CFG.battery=Math.max(5,Math.round(batNow()));LS.set('cfg',CFG)}if(meEl)meEl.style.visibility='';
   try{S.wake?.release()}catch(e){}try{speechSynthesis.cancel()}catch(e){}
   if(S.me&&mMe)drawMe(S.me.lat,S.me.lon);
   if(route()&&S.dest){map.easeTo({pitch:0,bearing:0,duration:500});drawRoutes(true);preview()}else home();
@@ -943,6 +1003,7 @@ function project(p){
 function alertText(m){return m.verbal_transition_alert_instruction||m.verbal_succinct_transition_instruction||m.instruction}
 async function onPos(lat,lon){
   if(!S.navi||!route()){drawMe(lat,lon);return}
+  batTrack(lat,lon);
   const kmh=S.kmh;$('nSpd').innerHTML=(kmh!=null?Math.round(kmh):'–')+'<small>km/h</small>';
   const pr=project([lat,lon]);
   if(pr.off>40){mMe?.setLngLat([lon,lat]);navOff(lat,lon,S.heading);checkForbidden(lat,lon,S.heading);
@@ -966,6 +1027,7 @@ async function onPos(lat,lon){
   const street=(m.street_names||m.begin_street_names||[])[0];
   $('nText').textContent=street&&![4,5,6].includes(m.type)?street:m.instruction;
   if(nx&&m.length<0.2){$('nThen').hidden=false;$('nThen').innerHTML='Danach '+arrow(nx.type,22,'#fff',7)}else $('nThen').hidden=true;
+  batUI(left);
   const rest=left/total*r.sec;$('nEta').textContent=clock(rest);$('nMin').textContent=mins(rest);$('nKm').textContent=comma((left/1000).toFixed(1));
   const sd=S.said[mi]||(S.said[mi]={}),prevLen=mi>0?r.man[mi-1].length*1000:0;
   const amp=atSig?'an der Ampel ':'';

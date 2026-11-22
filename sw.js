@@ -1,6 +1,6 @@
 // Navi 45 – Service Worker: App startet schnell und auch bei schlechtem Netz.
 // Routen, Suche, Tempolimits und Filialen brauchen weiterhin Internet.
-const VERSION = 'navi45-v9';
+const VERSION = 'navi45-v10';
 const SHELL = [
   './',
   './index.html',
