@@ -143,6 +143,11 @@ body.navi.free #recenter{display:block}
 .pin.sm{width:26px;height:26px}.pin.sm span{font-size:10px}
 .pin svg{width:15px;height:15px}
 .dotm{width:16px;height:16px;border-radius:50%;background:#fff;border:4px solid var(--blue);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+#warn{position:fixed;left:10px;right:10px;top:calc(env(safe-area-inset-top) + 10px);z-index:40;max-width:600px;margin:0 auto;background:#d70015;color:#fff;border-radius:16px;padding:14px 16px;display:flex;gap:12px;align-items:center;font-weight:700;font-size:17px;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+#warn[hidden]{display:none}
+#warn svg{flex:none;width:34px;height:34px}
+#warn small{display:block;font-weight:500;font-size:14px;opacity:.9}
+body.car #limit{display:none}
 @media (prefers-reduced-motion:reduce){#sheet{transition:none}.spin{animation:none}}
 </style>
 </head>
@@ -158,6 +163,7 @@ body.navi.free #recenter{display:block}
 </div>
 <button id="compass" class="glass" aria-label="Karte nach Norden ausrichten"><svg id="compIc" width="22" height="22" viewBox="0 0 24 24"><path d="M12 2l4 10h-8z" fill="#ff3b30"/><path d="M12 22l-4-10h8z" fill="#8e8e93"/></svg></button>
 
+<div id="warn" hidden role="alert"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 2 21h20z"/><path d="M12 10v5M12 18v.5" stroke-linecap="round"/></svg><div>Verbotene Straße!<small id="warnTxt">Autobahn oder Kraftfahrstraße – mit dem AM-Führerschein nicht erlaubt. Bitte bei der nächsten Möglichkeit abfahren.</small></div></div>
 <div id="sheet" class="glass"><div class="grabzone" id="grab"><div class="grab"></div></div><div id="body"></div></div>
 
 <div id="nav"><div class="sign"><svg id="nIcon" viewBox="0 0 64 64" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></svg><div><div id="nDist">–</div><div id="nText">Route wird gestartet …</div></div></div><div id="nThen" hidden></div></div>
@@ -177,7 +183,11 @@ body.navi.free #recenter{display:block}
 const VALHALLA='https://valhalla1.openstreetmap.de',PHOTON='https://photon.komoot.io',OVERPASS='https://overpass-api.de/api/interpreter';
 const $=id=>document.getElementById(id);
 const LS={get(k,d){try{const v=localStorage.getItem('navi45.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem('navi45.'+k,JSON.stringify(v))}catch(e){}}};
-const CFG=Object.assign({voice:'',rate:1,quiet:false,noUnpaved:true,theme:'auto',mapType:'std',hint:true},LS.get('cfg',{}));
+const CFG=Object.assign({voice:'',rate:1,quiet:false,noUnpaved:true,theme:'auto',mapType:'std',hint:true,vehicle:'am',showForbidden:true,warnForbidden:true},LS.get('cfg',{}));
+const isAM=()=>CFG.vehicle!=='car';
+const COST=()=>isAM()?'motor_scooter':'auto';
+const vehTxt=()=>isAM()?'mit 45 km/h':'mit dem Auto';
+document.body.classList.toggle('car',!isAM());
 const S={me:null,acc:0,heading:null,kmh:null,watch:null,follow:0,from:null,dest:null,routes:[],sel:0,navi:false,sim:null,lastIdx:0,off:0,rerouting:false,said:{},mute:false,wake:null,recent:LS.get('recent',[]),favs:LS.get('favs',[]),favMarkers:[],trail:[],pending:null,markers:[],bip:null,clickGuard:0,camBusy:false};
 const route=()=>S.routes[S.sel];
 
@@ -260,7 +270,14 @@ function addLayers(){
   L('done-line','done',{'line-color':'#9aa4b0','line-width':['interpolate',['linear'],['zoom'],10,4.5,16,10,19,17],'line-opacity':.9});
 }
 function germanLabels(){try{for(const l of map.getStyle().layers){if(l.type!=='symbol')continue;const tf=map.getLayoutProperty(l.id,'text-field');if(!tf)continue;const js=JSON.stringify(tf);if(/name/.test(js)&&!/housenumber|ref/.test(js))map.setLayoutProperty(l.id,'text-field',['coalesce',['get','name:de'],['get','name'],['get','name:latin']])}}catch(e){}}
-map.on('style.load',()=>{addLayers();germanLabels()});
+function forbiddenLayer(){
+  try{if(map.getLayer('forbidden'))map.removeLayer('forbidden');
+  if(!isAM()||!(CFG.showForbidden||CFG.warnForbidden))return;
+  let src='openmaptiles';if(!map.getSource(src)){src='omt';if(!map.getSource(src))map.addSource(src,{type:'vector',url:'https://tiles.openfreemap.org/planet'})}
+  map.addLayer({id:'forbidden',type:'line',source:src,'source-layer':'transportation',filter:['any',['==',['get','class'],'motorway'],['==',['get','expressway'],1]],
+    layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#ff1f3d','line-width':['interpolate',['linear'],['zoom'],6,1.5,10,3,14,6,18,14],'line-opacity':CFG.showForbidden?0.8:0.01}},map.getLayer('alt-case')?'alt-case':undefined)}catch(e){}
+}
+map.on('style.load',()=>{addLayers();germanLabels();forbiddenLayer()});
 map.on('load',()=>document.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show'));
 const setGeo=(k,coords)=>{GEO[k]=coords?{type:'FeatureCollection',features:(Array.isArray(coords[0][0])?coords:[coords]).map(c=>({type:'Feature',properties:{},geometry:{type:'LineString',coordinates:c.map(p=>[p[1],p[0]])}}))}:EMPTY;map.getSource(k)?.setData(GEO[k])};
 map.on('moveend',()=>{const c=map.getCenter();LS.set('view',{c:[c.lng,c.lat],z:map.getZoom()})});
@@ -319,7 +336,7 @@ function home(state){
   ${S.favs.length?`<div class="sec">Favoriten</div><div class="favs">${S.favs.map((f,i)=>`<button class="fav" data-f="${i}"><i>${IC.star.replace('<svg','<svg width="24" height="24"')}</i><span>${esc(f.name)}</span></button>`).join('')}</div>`:''}
   ${installHint()}
   ${S.recent.length?`<div class="sec">Zuletzt</div><div class="group"><ul class="list">${S.recent.map((r,i)=>`<li data-r="${i}"><span class="ic" style="${r.cat?`background:${CATS.find(c=>c.id===r.cat)?.bg};color:${CATS.find(c=>c.id===r.cat)?.fg}`:''}">${r.cat?glyphOf(CATS.find(c=>c.id===r.cat)):'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'}</span><span class="tx"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span></li>`).join('')}</ul></div>`:''}
-  <div class="sub" style="margin-top:16px;font-size:13px">Alle Routen ohne Autobahn und Kraftfahrstraße, berechnet für höchstens 45 km/h. Tippen Sie auf die Karte, um einen Ort zu wählen.</div>`,state||'peek');
+  <div class="sub" style="margin-top:16px;font-size:13px">${isAM()?'Modus AM-Führerschein: alle Routen ohne Autobahn und Kraftfahrstraße, berechnet für höchstens 45 km/h.':'Modus normales Auto.'} Tippen Sie auf die Karte, um einen Ort zu wählen. Fahrzeug wechseln: Einstellungen.</div>`,state||'peek');
   const q=$('q');let t;
   q.addEventListener('focus',()=>sheetTo('full'));
   q.addEventListener('input',()=>{$('sbox').classList.toggle('has',!!q.value);clearTimeout(t);t=setTimeout(()=>search(q.value.trim()),280)});
@@ -359,7 +376,7 @@ async function catSearch(cat){
   list=list.filter(x=>x.air<30000).sort((a,b)=>a.air-b.air).slice(0,30);
   if(!list.length){body(`<div class="head"><div><h2>${esc(cat.label)}</h2><div class="sub">Nichts gefunden ${near}.</div></div><button class="x" id="x">✕</button></div>`,'peek');$('x').onclick=()=>home();return}
   // Fahrzeiten mit 45 km/h für alle auf einmal
-  try{const q={sources:[{lat:c.lat,lon:c.lon}],targets:list.map(x=>({lat:x.lat,lon:x.lon})),costing:'motor_scooter',costing_options:{motor_scooter:mopedOpts()}};
+  try{const q={sources:[{lat:c.lat,lon:c.lon}],targets:list.map(x=>({lat:x.lat,lon:x.lon})),costing:COST(),costing_options:costOpts()};
     const j=await (await fetch(`${VALHALLA}/sources_to_targets?json=${encodeURIComponent(JSON.stringify(q))}`,{signal:withTimeout(15000)})).json();
     j.sources_to_targets[0].forEach(r=>{const x=list[r.to_index];if(x&&r.time!=null){x.sec=r.time;x.km=r.distance}})}catch(e){}
   // Drive-in-Angaben (nur Burger-Läden, mit Zeitlimit)
@@ -371,7 +388,7 @@ async function catSearch(cat){
   const bounds=new maplibregl.LngLatBounds();list.slice(0,8).forEach(x=>bounds.extend([x.lon,x.lat]));bounds.extend([c.lon,c.lat]);
   fitTo(bounds,H.half(),15);
   const dtLine=x=>cat.dt?(x.dt==='yes'?'<span class="tag">Drive-in</span>':''):'';
-  body(`<div class="head"><div><h2>${esc(cat.label)}</h2><div class="sub">${list.length} Treffer ${near} · sortiert nach Fahrzeit mit 45 km/h</div></div><button class="x" id="x" aria-label="Schließen">✕</button></div>
+  body(`<div class="head"><div><h2>${esc(cat.label)}</h2><div class="sub">${list.length} Treffer ${near} · sortiert nach Fahrzeit ${vehTxt()}</div></div><button class="x" id="x" aria-label="Schließen">✕</button></div>
   ${cat.dt&&!S.dtOk?'<div class="note">Die Drive-in-Angaben sind gerade nicht abrufbar.</div>':''}
   <div class="group" style="margin-top:12px"><ul class="list">${list.map((x,i)=>`<li data-i="${i}">${catIcon(cat,'ic')}<span class="tx"><b>${esc(x.name)}</b>${dtLine(x)}<small>${esc(x.sub||'')}</small></span><span class="rt">${x.sec!=null?`<b>${fmtTime(x.sec)}</b>${comma(x.km.toFixed(1))} km`:fmtDist(x.air)}</span></li>`).join('')}</ul></div>`);
   $('x').onclick=()=>{clearMarkers();home()};
@@ -395,7 +412,7 @@ function place(p,keepView){
   const d=S.me?fmtDist(hav([S.me.lat,S.me.lon],[p.lat,p.lon])):'';
   const info=[cat?.label,p.sub].filter(Boolean).join(' · ');
   body(`<div class="head"><div><h2>${esc(p.name)}</h2><div class="sub">${esc(info)}</div>
-    ${p.sec!=null?`<div class="sub" style="margin-top:4px"><b style="color:var(--ink)">${fmtTime(p.sec)}</b> mit 45 km/h · ${comma(p.km.toFixed(1))} km${p.dt==='yes'?' <span class="tag">Drive-in</span>':''}</div>`:d?`<div class="sub" style="margin-top:4px">${d} Luftlinie</div>`:''}</div>
+    ${p.sec!=null?`<div class="sub" style="margin-top:4px"><b style="color:var(--ink)">${fmtTime(p.sec)}</b> ${vehTxt()} · ${comma(p.km.toFixed(1))} km${p.dt==='yes'?' <span class="tag">Drive-in</span>':''}</div>`:d?`<div class="sub" style="margin-top:4px">${d} Luftlinie</div>`:''}</div>
     <button class="x" id="x" aria-label="Schließen">✕</button></div>
   <div class="row"><button class="btn" id="bR"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M21.7 11.3l-9-9a1 1 0 0 0-1.4 0l-9 9a1 1 0 0 0 0 1.4l9 9a1 1 0 0 0 1.4 0l9-9a1 1 0 0 0 0-1.4zM14 14.5V12h-4v3H8v-4a1 1 0 0 1 1-1h5V7.5l3.5 3.5z"/></svg>Route</button>
     <button class="btn soft" id="bFav" style="flex:.55;color:#ff9f0a">${IC.star.replace('<svg','<svg width="18" height="18"')}${favIdx(p)>=0?'Gemerkt':'Merken'}</button></div>
@@ -458,13 +475,30 @@ function drawMe(lat,lon,bearing){
   else if(meEl.classList.contains('nav')){meEl.className='puck';meEl.innerHTML='<div class="arr"></div><div class="d"></div>'}
   meEl.classList.toggle('dir',hd!=null&&!S.navi);
   if(hd!=null)mMe.setRotation(hd);
-  if(!S.navi&&S.follow)map.easeTo({center:[lon,lat],bearing:S.follow===2&&hd!=null?hd:map.getBearing(),padding:pad(),duration:900,easing:t=>t});
+  if(!S.navi&&S.follow)map.easeTo({center:[lon,lat],bearing:S.follow===2&&hd!=null?smoothBearing(hd):map.getBearing(),padding:pad(),duration:900,easing:t=>t});
+  checkForbidden(lat,lon,hd);
 }
 
+// Warnung, wenn man auf eine verbotene Straße fährt (nur AM)
+function angDiff(a,b){return Math.abs(((b-a+540)%360)-180)}
+function checkForbidden(lat,lon,hd){
+  if(!isAM()||!CFG.warnForbidden||!map.getLayer('forbidden')||hd==null||!((S.kmh??0)>8)){S.fbHits=0;return}
+  let hit=false;try{const pt=map.project([lon,lat]);const fs=map.queryRenderedFeatures([[pt.x-10,pt.y-10],[pt.x+10,pt.y+10]],{layers:['forbidden']});
+    for(const f of fs){const g=f.geometry,lines=g.type==='LineString'?[g.coordinates]:g.type==='MultiLineString'?g.coordinates:[];
+      for(const c of lines)for(let i=0;i<c.length-1;i++){const a=[c[i][1],c[i][0]],b=[c[i+1][1],c[i+1][0]];if(hav(a,[lat,lon])+hav(b,[lat,lon])>hav(a,b)+40)continue;const lb=brg(a,b);if(Math.min(angDiff(lb,hd),angDiff((lb+180)%360,hd))<30)hit=true}}}catch(e){}
+  S.fbHits=hit?(S.fbHits||0)+1:Math.max(0,(S.fbHits||0)-1);
+  if(S.fbHits>=3&&$('warn').hidden){$('warn').hidden=false;say('Achtung! Diese Straße ist mit dem AM-Führerschein verboten. Bitte bei der nächsten Möglichkeit abfahren.',true);try{navigator.vibrate?.([300,150,300])}catch(e){}}
+  if(S.fbHits===0&&!$('warn').hidden)$('warn').hidden=true;
+}
+$('warn').onclick=()=>{$('warn').hidden=true};
+// weiche Drehung der Karte
+function smoothBearing(target){if(S.camB==null)S.camB=target;const d=((target-S.camB+540)%360)-180;S.camB=(S.camB+d*(Math.abs(d)>60?0.85:0.55)+360)%360;return S.camB}
+
 // ---------- Route ----------
-const mopedOpts=(up=CFG.noUnpaved)=>({top_speed:45,use_primary:CFG.quiet?0.1:0.45,use_hills:0.5,exclude_unpaved:up});
+const mopedOpts=(up=CFG.noUnpaved)=>isAM()?({top_speed:45,use_primary:CFG.quiet?0.1:0.45,use_hills:0.5,exclude_unpaved:up}):({use_highways:CFG.quiet?0.3:1,exclude_unpaved:up});
+const costOpts=up=>({[COST()]:mopedOpts(up)});
 async function getRoutes(a,b,alts=2){
-  const ask=async up=>{const q={locations:[{lat:a.lat,lon:a.lon},{lat:b.lat,lon:b.lon}],costing:'motor_scooter',costing_options:{motor_scooter:mopedOpts(up)},directions_options:{units:'kilometers',language:'de-DE'},alternates:alts};
+  const ask=async up=>{const q={locations:[{lat:a.lat,lon:a.lon},{lat:b.lat,lon:b.lon}],costing:COST(),costing_options:costOpts(up),directions_options:{units:'kilometers',language:'de-DE'},alternates:alts};
     return (await fetch(`${VALHALLA}/route?json=${encodeURIComponent(JSON.stringify(q))}`,{signal:withTimeout(20000)})).json()};
   let j=await ask(CFG.noUnpaved),fallback=false;
   if(!j.trip&&CFG.noUnpaved){j=await ask(false);fallback=true}
@@ -477,7 +511,7 @@ async function getRoutes(a,b,alts=2){
 const ATTRS=['edge.speed_limit','edge.unpaved','edge.surface','edge.length','edge.begin_shape_index','edge.end_shape_index'];
 async function loadAttrs(r){
   if(!r||r.edges||r.attrBusy)return;r.attrBusy=true;
-  try{const q={encoded_polyline:r.shape,shape_match:'edge_walk',costing:'motor_scooter',filters:{attributes:ATTRS,action:'include'}};
+  try{const q={encoded_polyline:r.shape,shape_match:'edge_walk',costing:COST(),filters:{attributes:ATTRS,action:'include'}};
     const j=await (await fetch(`${VALHALLA}/trace_attributes`,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(q),signal:withTimeout(20000)})).json();
     r.edges=(j.edges||[]).map(e=>({b:e.begin_shape_index,e:e.end_shape_index,sl:+e.speed_limit||0,up:!!e.unpaved,len:(e.length||0)*1000}));
     r.unpavedM=r.edges.filter(e=>e.up).reduce((a,e)=>a+e.len,0);
@@ -495,7 +529,7 @@ function fillRouteNote(){const r=route(),n=$('upNote');if(!n||!r)return;const pa
 // Tempolimit auch ohne Navigation: letzte Positionen auf die Straße legen
 async function freeLimit(){
   if(S.navi||S.trail.length<2||!((S.kmh??0)>4))return;
-  try{const q={shape:S.trail.slice(-5).map(p=>({lat:p[0],lon:p[1]})),shape_match:'map_snap',costing:'motor_scooter',filters:{attributes:['edge.speed_limit'],action:'include'}};
+  try{const q={shape:S.trail.slice(-5).map(p=>({lat:p[0],lon:p[1]})),shape_match:'map_snap',costing:COST(),filters:{attributes:['edge.speed_limit'],action:'include'}};
     const j=await (await fetch(`${VALHALLA}/trace_attributes`,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(q),signal:withTimeout(8000)})).json();
     const e=(j.edges||[]).at(-1);if(!S.navi)showSign(e?+e.speed_limit:0)}catch(e){}
 }
@@ -515,7 +549,7 @@ async function routeTo(p){
   if(!S.from&&!S.me){S.pending=p;fromUI(p,false);startWatch();return}
   S.pending=null;clearMarkers();
   const from=S.from||{...S.me,name:'Mein Standort'};
-  body(`<h2><span class="spin"></span>Route wird berechnet …</h2><div class="sub">Nur Straßen, die mit 45 km/h erlaubt sind.</div>`,'peek');
+  body(`<h2><span class="spin"></span>Route wird berechnet …</h2><div class="sub">${isAM()?'Nur Straßen, die mit 45 km/h erlaubt sind.':'Mit dem Auto.'}</div>`,'peek');
   try{S.routes=await getRoutes(from,p);S.sel=0;setFromMarker(S.from);drawRoutes(true);preview()}
   catch(e){body(`<div class="head"><div><h2>Keine Route</h2></div><button class="x" id="x">✕</button></div><div class="note err">Keine erlaubte Strecke gefunden oder der Routendienst ist gerade nicht erreichbar. Bitte gleich nochmal versuchen.</div><div class="row"><button class="btn soft" id="again">Nochmal versuchen</button></div>`,'peek');$('x').onclick=()=>place(p,true);$('again').onclick=()=>routeTo(p)}
 }
@@ -532,7 +566,7 @@ function fromUI(p,denied){
 }
 function preview(){
   const r=route(),from=S.from||{name:'Mein Standort'},p=S.dest,fastest=Math.min(...S.routes.map(x=>x.sec));
-  body(`<div class="head"><div><div class="time">${fmtTime(r.sec)}</div><div class="sub">${comma(r.km.toFixed(1))} km · Ankunft ${clock(r.sec)} · max. 45 km/h</div></div><button class="x" id="x" aria-label="Schließen">✕</button></div>
+  body(`<div class="head"><div><div class="time">${fmtTime(r.sec)}</div><div class="sub">${comma(r.km.toFixed(1))} km · Ankunft ${clock(r.sec)}${isAM()?' · max. 45 km/h':''}</div></div><button class="x" id="x" aria-label="Schließen">✕</button></div>
   ${S.routes.length>1?`<div class="alts">${S.routes.map((x,i)=>`<button class="alt${i===S.sel?' on':''}" data-a="${i}"><b>${fmtTime(x.sec)}</b><span>${comma(x.km.toFixed(1))} km${x.sec===fastest?' · Schnellste':''}</span></button>`).join('')}</div>`:''}
   <div class="from"><span class="dot"></span><span style="flex:1">Von <b>${esc(from.name)}</b> nach <b>${esc(p.name)}</b></span>${S.from?'<button id="useMe">Mein Standort</button>':''}</div>
   <div id="upNote"></div>
@@ -568,6 +602,10 @@ $('navMute').onclick=()=>{S.mute=!S.mute;setMuteUI();if(S.mute)try{speechSynthes
 function settings(){
   const vs=voices().sort((a,b)=>scoreVoice(b)-scoreVoice(a)),cur=bestVoice();
   body(`<div class="head"><div><h2>Einstellungen</h2></div><button class="x" id="x" aria-label="Schließen">✕</button></div>
+  <div class="sec">Fahrzeug</div>
+  <div class="group"><div class="set"><span>Ich fahre</span><select id="veh"><option value="am" ${isAM()?'selected':''}>AM-Führerschein (45 km/h)</option><option value="car" ${!isAM()?'selected':''}>Normales Auto</option></select></div>
+  ${isAM()?`<div class="set"><span>Verbotene Straßen rot zeigen<br><small class="sub">Autobahn und Kraftfahrstraße</small></span><label class="sw"><input type="checkbox" id="fbShow" ${CFG.showForbidden?'checked':''}><span></span></label></div>
+  <div class="set"><span>Warnung beim Auffahren<br><small class="sub">Roter Hinweis, Ansage und Vibration</small></span><label class="sw"><input type="checkbox" id="fbWarn" ${CFG.warnForbidden?'checked':''}><span></span></label></div>`:''}</div>
   <div class="sec">Ansagen</div>
   <div class="group">
     <div class="set"><span>Stimme</span><select id="vSel">${vs.length?vs.map(v=>`<option ${cur&&v.name===cur.name?'selected':''}>${esc(v.name)}</option>`).join(''):'<option>Standard</option>'}</select></div>
@@ -582,7 +620,7 @@ function settings(){
   </div>
   <div class="sec">Karte</div>
   <div class="group"><div class="set"><span>Kartentyp</span><select id="mtype"><option value="std" ${CFG.mapType!=='sat'?'selected':''}>Standard</option><option value="sat" ${CFG.mapType==='sat'?'selected':''}>Satellit</option></select></div><div class="set"><span>Darstellung</span><select id="theme">${[['auto','Automatisch'],['light','Hell'],['dark','Dunkel']].map(([v,l])=>`<option value="${v}" ${CFG.theme===v?'selected':''}>${l}</option>`).join('')}</select></div></div>
-  <div class="sub" style="margin:16px 0 4px;font-size:13px">Navi 45 plant Routen für Fahrzeuge mit höchstens 45 km/h (AM-Führerschein): ohne Autobahn und Kraftfahrstraße. Die Daten kommen aus OpenStreetMap und können Fehler enthalten – Verkehrsschilder gehen immer vor.</div>`,'full');
+  <div class="sub" style="margin:16px 0 4px;font-size:13px">${isAM()?'Im AM-Modus plant Navi 45 Routen für höchstens 45 km/h – ohne Autobahn und Kraftfahrstraße. Rot markierte Straßen sind für Sie verboten. ':''}Karten, Adressen, Läden und Tempolimits kommen aus OpenStreetMap: meist sehr genau, aber nicht fehlerfrei. Wo kein Tempolimit eingetragen ist, zeigt die App kein Schild. Verkehrsschilder gehen immer vor.</div>`,'full');
   const save=()=>LS.set('cfg',CFG);
   $('x').onclick=()=>home();
   $('vSel').onchange=e=>{CFG.voice=e.target.value;save();say('Jetzt bitte rechts abbiegen.',true)};
@@ -590,6 +628,9 @@ function settings(){
   $('vTest').onclick=()=>{unlockSpeech();say('In 300 Metern links auf die Hauptstraße abbiegen.',true)};
   $('quiet').onchange=e=>{CFG.quiet=e.target.checked;save()};
   $('unp').onchange=e=>{CFG.noUnpaved=e.target.checked;save()};
+  $('veh').onchange=e=>{CFG.vehicle=e.target.value;save();document.body.classList.toggle('car',!isAM());clearRoute();showSign(0);forbiddenLayer();settings()};
+  if($('fbShow'))$('fbShow').onchange=e=>{CFG.showForbidden=e.target.checked;save();forbiddenLayer()};
+  if($('fbWarn'))$('fbWarn').onchange=e=>{CFG.warnForbidden=e.target.checked;save();forbiddenLayer()};
   $('theme').onchange=e=>{CFG.theme=e.target.value;save();setTheme()};
   $('mtype').onchange=e=>{CFG.mapType=e.target.value;save();setTheme();$('btnType').style.color=CFG.mapType==='sat'?'#ff9f0a':''};
 }
@@ -601,12 +642,12 @@ document.addEventListener('visibilitychange',keepAwake);
 function startNavi(sim){
   if(!route())return;unlockSpeech();
   document.body.classList.add('navi');document.body.classList.remove('free');
-  S.navi=true;S.lastIdx=0;S.off=0;S.said={};S.isSim=sim;S.camFree=false;keepAwake();drawFavs();showSign(0);loadAttrs(route());
+  S.navi=true;S.lastIdx=0;S.off=0;S.said={};S.isSim=sim;S.camFree=false;S.camB=null;S.fbHits=0;keepAwake();drawFavs();showSign(0);loadAttrs(route());
   setGeo('alt',null);
   const first=route().man[0];
   say((sim?'Probefahrt. ':'')+(first?.verbal_pre_transition_instruction||first?.instruction||'Los geht’s.'));
   S.said[0]={far:1,mid:1,now:1};
-  if(sim){let d=0;const step=()=>{d+=45/3.6*2.5;const r=route(),p=pointAt(d);if(!p||!S.navi){if(S.navi)stopNavi();return}S.kmh=45;onPos(p[0],p[1])};step();S.sim=setInterval(step,1000)}
+  if(sim){let d=0;const v=isAM()?45:50;const step=()=>{d+=v/3.6*2.5;const r=route(),p=pointAt(d);if(!p||!S.navi){if(S.navi)stopNavi();return}S.kmh=v;onPos(p[0],p[1])};step();S.sim=setInterval(step,1000)}
   else{startWatch();if(S.me)onPos(S.me.lat,S.me.lon)}
 }
 function stopNavi(){
@@ -616,7 +657,7 @@ function stopNavi(){
   if(route()&&S.dest){map.easeTo({pitch:0,bearing:0,duration:500});drawRoutes(true);preview()}else home();
 }
 $('btnStop').onclick=stopNavi;
-$('recenter').onclick=()=>{document.body.classList.remove('free');S.camFree=false};
+$('recenter').onclick=()=>{document.body.classList.remove('free');S.camFree=false;S.camB=null};
 map.on('dragstart',e=>{if(S.navi&&e.originalEvent)S.camFree=true});
 function pointAt(d){const {coords:c,cum}=route();if(d>=cum[cum.length-1])return null;let i=1;while(cum[i]<d)i++;const f=(d-cum[i-1])/((cum[i]-cum[i-1])||1);return[c[i-1][0]+(c[i][0]-c[i-1][0])*f,c[i-1][1]+(c[i][1]-c[i-1][1])*f]}
 function project(p){
@@ -630,16 +671,16 @@ async function onPos(lat,lon){
   if(!S.navi||!route()){drawMe(lat,lon);return}
   const kmh=S.kmh;$('nSpd').innerHTML=(kmh!=null?Math.round(kmh):'–')+'<small>km/h</small>';
   const pr=project([lat,lon]);
-  if(pr.off>40){drawMe(lat,lon);
+  if(pr.off>40){drawMe(lat,lon);if(!S.camFree)map.easeTo({center:[lon,lat],bearing:S.heading!=null?smoothBearing(S.heading):map.getBearing(),pitch:55,padding:{top:Math.round(innerHeight*.42),bottom:110,left:0,right:0},duration:1000,easing:t=>t});
     if(++S.off>=3&&!S.rerouting&&!S.isSim){S.rerouting=true;$('nText').textContent='Neue Route wird berechnet …';say('Route wird neu berechnet.');
       try{S.from=null;S.routes=(await getRoutes({lat,lon},S.dest,0));S.sel=0;drawRoutes(false);S.lastIdx=0;S.said={}}catch(e){}S.rerouting=false;S.off=0}return}
   S.off=0;S.lastIdx=pr.idx;
   const r=route(),total=r.cum[r.cum.length-1],left=total-pr.along;
   if(!r.edges)loadAttrs(r);const lim=limitAt(r,pr.idx);showSign(lim);
-  $('nSpd').classList.toggle('over',kmh!=null&&kmh>Math.min(lim||45,45)+3);
+  $('nSpd').classList.toggle('over',kmh!=null&&kmh>(isAM()?Math.min(lim||45,45):(lim||999))+3);
   const ahead=pointAt(Math.min(total-0.5,pr.along+25))||[lat,lon],hd=brg(pr.pt,ahead);
   drawMe(pr.pt[0],pr.pt[1],hd);
-  if(!S.camFree)map.easeTo({center:[pr.pt[1],pr.pt[0]],bearing:hd,pitch:55,zoom:kmh>35?16.6:17.2,padding:{top:Math.round(innerHeight*.42),bottom:110,left:0,right:0},duration:1000,easing:t=>t});
+  if(!S.camFree)map.easeTo({center:[pr.pt[1],pr.pt[0]],bearing:smoothBearing(hd),pitch:55,zoom:kmh>35?16.6:17.2,padding:{top:Math.round(innerHeight*.42),bottom:110,left:0,right:0},duration:1000,easing:t=>t});
   setGeo('done',r.coords.slice(0,pr.idx+1).concat([pr.pt]));setGeo('route',[pr.pt].concat(r.coords.slice(pr.idx+1)));
   if(left<25){$('nDist').textContent='Angekommen';$('nText').textContent=S.dest.name;$('nIcon').innerHTML=arrow(4);$('nThen').hidden=true;
     const dm=r.man[r.man.length-1];say(dm?.verbal_pre_transition_instruction||'Sie haben Ihr Ziel erreicht.');clearInterval(S.sim);S.navi=false;setTimeout(()=>{S.navi=true;stopNavi()},6000);return}
@@ -658,6 +699,7 @@ async function onPos(lat,lon){
 
 // ---------- Start ----------
 sheetTo('peek');home();map.on('load',drawFavs);
+window.navi45={S,CFG,forbiddenLayer,map};
 if('speechSynthesis' in window)speechSynthesis.getVoices();
 try{navigator.permissions?.query({name:'geolocation'}).then(p=>{if(p.state==='granted')startWatch()})}catch(e){}
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
