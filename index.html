@@ -8,6 +8,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Navi 45">
 <meta name="theme-color" content="#ffffff">
+<meta name="description" content="Navigation für den AM-Führerschein – Routen ohne Autobahn und Kraftfahrstraße, max. 45 km/h">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Navi 45</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
@@ -137,6 +141,22 @@ function label(f){const p=f.properties||{};const street=[p.street,p.housenumber]
 const body=(h,small)=>{$('body').innerHTML=h;$('sheet').classList.toggle('small',!!small);$('body').scrollTop=0};
 const saveRecent=p=>{S.recent=[p,...S.recent.filter(r=>r.name!==p.name)].slice(0,5);try{localStorage.setItem('navi45r',JSON.stringify(S.recent))}catch(e){}};
 
+// ---------- Als App installieren ----------
+const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+function installHint(){
+  let off=false;try{off=localStorage.getItem('navi45noinst')==='1'}catch(e){}
+  if(standalone||off||!(isIOS||S.bip))return'';
+  return`<div class="note" style="background:var(--fill);color:var(--ink);display:flex;gap:10px;align-items:center;margin-top:12px">
+    <img src="icons/icon-192.png" alt="" width="40" height="40" style="border-radius:10px;flex:none">
+    <span style="flex:1"><b>Navi 45 als App</b><br><span class="sub">Ohne Browserleiste, direkt vom Home-Bildschirm.</span>
+    <span id="instHelp" hidden><br>Tippen Sie unten in Safari auf <b>Teilen</b> (□↑) und dann auf <b>„Zum Home-Bildschirm"</b>.</span></span>
+    <button id="inst" style="color:var(--blue);font-weight:700">${S.bip?'Installieren':'So geht\'s'}</button>
+    <button id="instX" aria-label="Hinweis ausblenden" style="color:var(--mut)">✕</button></div>`;
+}
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();S.bip=e;if($('q')&&!$('q').value)home()});
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+
 // ---------- Startansicht ----------
 function home(){
   if(mDest&&!S.route){map.removeLayer(mDest);mDest=null}
@@ -145,11 +165,14 @@ function home(){
     <button class="chip" id="cMc"><i style="background:#ffbc0d;color:#c8102e">M</i>McDonald's Drive-in</button>
     <button class="chip" id="cHere"><i style="background:var(--blue)">➤</i>Mein Standort</button>
   </div>
+  ${installHint()}
   ${S.recent.length?`<div class="sec">Zuletzt</div><ul class="list">${S.recent.map((r,i)=>`<li data-r="${i}"><span class="ic">🕘</span><span class="tx">${esc(r.name)}<small>${esc(r.sub)}</small></span></li>`).join('')}</ul>`:`<div class="sub" style="margin-top:12px">Tippen Sie auf die Karte, um einen Ort zu wählen – oder suchen Sie oben. Alle Routen ohne Autobahn und Kraftfahrstraße.</div>`}`,true);
   const q=$('q');let t;
   q.addEventListener('focus',()=>$('sheet').classList.remove('small'));
   q.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>search(q.value.trim()),300)});
   $('cMc').onclick=mcSearch;$('cHere').onclick=locate;
+  if($('inst'))$('inst').onclick=async()=>{if(S.bip){S.bip.prompt();try{await S.bip.userChoice}catch(e){}S.bip=null;home()}else{$('instHelp').hidden=false}};
+  if($('instX'))$('instX').onclick=()=>{try{localStorage.setItem('navi45noinst','1')}catch(e){}home()};
   $('body').querySelectorAll('[data-r]').forEach(li=>li.onclick=()=>place(S.recent[+li.dataset.r]));
 }
 async function search(q){
