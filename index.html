@@ -188,7 +188,7 @@ function startWatch(){
   S.watch=navigator.geolocation.watchPosition(p=>{
     const c=p.coords;S.acc=c.accuracy;S.heading=(c.heading!=null&&!isNaN(c.heading))?c.heading:S.heading;S.kmh=c.speed!=null?c.speed*3.6:null;
     if(!S.sim)onPos(c.latitude,c.longitude);
-  },e=>{if(e.code===1){S.watch=null;body(`<h2>Standort nicht erlaubt</h2><div class="note err">Bitte in den Einstellungen den Standort für diese Website erlauben (iPhone: Einstellungen › Datenschutz › Ortungsdienste › Safari-Websites › „Beim Verwenden").</div><button class="big gray" id="bk">Zurück</button>`,true);$('bk').onclick=home}},
+  },e=>{if(e.code===1&&S.pending&&!S.me){S.watch=null;fromUI(S.pending,true)}else if(e.code===1){S.watch=null;body(`<h2>Standort nicht erlaubt</h2><div class="note err">Bitte in den Einstellungen den Standort für diese Website erlauben (iPhone: Einstellungen › Datenschutz › Ortungsdienste › Safari-Websites › „Beim Verwenden").</div><button class="big gray" id="bk">Zurück</button>`,true);$('bk').onclick=home}},
   {enableHighAccuracy:true,maximumAge:1000,timeout:20000});
 }
 function locate(){
@@ -225,14 +225,21 @@ function drawRoute(fit){
 }
 async function routeTo(p){
   S.dest=p;saveRecent({name:p.name,sub:p.sub||'',lat:p.lat,lon:p.lon});
-  if(!S.from&&!S.me){startWatch();body(`<h2>Standort wird gesucht …</h2><div class="sub">Bitte „Erlauben" tippen. Oder Start eintippen:</div><div class="from">Von <input id="fq" placeholder="Startadresse"></div><ul class="list" id="fr"></ul>`,true);fromSearch(p);return}
+  if(!S.from&&!S.me){S.pending=p;fromUI(p,false);startWatch();return}
+  S.pending=null;
   const from=S.from||{...S.me,name:'Mein Standort'};
   body(`<h2>Route wird berechnet …</h2><div class="sub">Nur Straßen, die mit 45 km/h erlaubt sind.</div>`,true);
   try{S.route=await getRoute(from,p);drawRoute(true);preview(from,p)}
   catch(e){body(`<h2>Keine Route</h2><div class="note err">Keine erlaubte Strecke gefunden oder der Routendienst ist gerade nicht erreichbar.</div><button class="big gray" id="bk">Zurück</button>`,true);$('bk').onclick=()=>place(p,true)}
 }
+function fromUI(p,denied){
+  body(`<div class="head"><div><h2>${denied?'Standort nicht erlaubt':'Standort wird gesucht …'}</h2></div><button class="close" id="x" aria-label="Schließen">✕</button></div>
+  ${denied?'<div class="note err">Erlauben Sie den Standort in den Einstellungen (iPhone: Einstellungen › Datenschutz › Ortungsdienste › Safari-Websites › „Beim Verwenden") – oder tippen Sie den Start ein:</div>':'<div class="sub">Bitte „Erlauben" tippen – oder den Start eintippen:</div>'}
+  <div class="from">Von <input id="fq" placeholder="Startadresse eintippen" autocomplete="off"></div><ul class="list" id="fr"></ul>`,true);
+  $('x').onclick=()=>{S.pending=null;place(p,true)};fromSearch(p);
+}
 function fromSearch(p){
-  const fq=$('fq');let t;
+  const fq=$('fq');let t;fq.onfocus=()=>$('sheet').classList.remove('small');
   fq.oninput=()=>{clearTimeout(t);t=setTimeout(async()=>{try{const c=map.getCenter();const j=await (await fetch(`${PHOTON}/api/?q=${encodeURIComponent(fq.value)}&lang=de&limit=5&lat=${c.lat}&lon=${c.lng}`)).json();
     const it=j.features.map(f=>{const l=label(f);return{name:l.main,sub:l.sub,lat:f.geometry.coordinates[1],lon:f.geometry.coordinates[0]}});
     $('fr').innerHTML=it.map((r,i)=>`<li data-i="${i}"><span class="ic">🏁</span><span class="tx">${esc(r.name)}<small>${esc(r.sub)}</small></span></li>`).join('');
@@ -278,7 +285,7 @@ async function mcSearch(){
   const pick=i=>{const x=cand[i];place({name:"McDonald's"+(x.dt==='yes'?' Drive-in':''),sub:x.sub,lat:x.lat,lon:x.lon},true)};
   body(`<div class="head"><div><h2>McDonald's</h2><div class="sub">Sortiert nach Fahrzeit mit 45 km/h</div></div><button class="close" id="x">✕</button></div>
   ${yes.length?'':Object.keys(dtInfo).length?'<div class="note">Bei keinem Restaurant hier ist ein Drive-in in der Karte eingetragen – das heißt nicht, dass es keinen gibt.</div>':'<div class="note">Die Drive-in-Angaben sind gerade nicht abrufbar – hier die nächsten Restaurants.</div>'}
-  <ul class="list">${cand.map((x,i)=>`<li data-i="${i}"><span class="ic" style="background:#ffbc0d;color:#c8102e;font-weight:800">M</span><span class="tx">${esc(x.sub||x.name)}<small>${x.dt==='yes'?'Drive-in':x.dt==='no'?'Kein Drive-in':'Drive-in nicht eingetragen'}</small></span><span class="rt">${x.sec<1e9?fmtTime(x.sec)+'<br>'+x.km.toFixed(1).replace('.',',')+' km':'keine Route'}</span></li>`).join('')}</ul>`);
+  <ul class="list">${cand.map((x,i)=>`<li data-i="${i}"><span class="ic" style="background:#ffbc0d;color:#c8102e;font-weight:800">M</span><span class="tx">${esc(x.sub||x.name)}<small>${x.dt==='yes'?'Drive-in':x.dt==='no'?'Kein Drive-in':Object.keys(dtInfo).length?'Drive-in nicht eingetragen':'Drive-in unbekannt'}</small></span><span class="rt">${x.sec<1e9?fmtTime(x.sec)+'<br>'+x.km.toFixed(1).replace('.',',')+' km':'keine Route'}</span></li>`).join('')}</ul>`);
   $('x').onclick=()=>{mcLayer.clearLayers();home()};
   $('body').querySelector('.list').onclick=e=>{const li=e.target.closest('[data-i]');if(li)pick(+li.dataset.i)};
   map.fitBounds(L.latLngBounds(cand.map(x=>[x.lat,x.lon]).concat([[c.lat,c.lon]])),{paddingTopLeft:[30,70],paddingBottomRight:[30,Math.round(innerHeight*.45)]});
