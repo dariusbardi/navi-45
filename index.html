@@ -145,6 +145,7 @@ body.navi.free #recenter{display:block}
 .dotm{width:16px;height:16px;border-radius:50%;background:#fff;border:4px solid var(--blue);box-shadow:0 1px 4px rgba(0,0,0,.3)}
 #warn{position:fixed;left:10px;right:10px;top:calc(env(safe-area-inset-top) + 10px);z-index:40;max-width:600px;margin:0 auto;background:#d70015;color:#fff;border-radius:16px;padding:14px 16px;display:flex;gap:12px;align-items:center;font-weight:700;font-size:17px;box-shadow:0 8px 30px rgba(0,0,0,.4)}
 #warn[hidden]{display:none}
+body.navi #warn{top:calc(env(safe-area-inset-top) + 128px)}
 #warn svg{flex:none;width:34px;height:34px}
 #warn small{display:block;font-weight:500;font-size:14px;opacity:.9}
 body.car #limit{display:none}
@@ -276,16 +277,17 @@ const CAR_PARTS=[ // [Umriss in Metern (x rechts, y vorne), Farbe, Boden, Höhe]
  [[[-2.5,-3.9],[2.5,-3.9],[2.3,1.8],[-2.3,1.8]],'#f4f8ff',6.4,6.9],
  [[[-3.4,6.4],[-1.8,6.4],[-1.8,7.4],[-3.1,7.4]],'#fff7cc',2.2,3.3],[[[1.8,6.4],[3.4,6.4],[3.1,7.4],[1.8,7.4]],'#fff7cc',2.2,3.3],
  [[[-3.6,-7.3],[-1.9,-7.3],[-1.9,-6.8],[-3.6,-6.8]],'#ff3b30',2.2,3.2],[[[1.9,-7.3],[3.6,-7.3],[3.6,-6.8],[1.9,-6.8]],'#ff3b30',2.2,3.2]];
-function carGeo(lat,lon,h){const c=Math.cos(rad(h)),s_=Math.sin(rad(h)),kLon=111320*Math.cos(rad(lat));
-  const tr=([x,y])=>{const e=x*c+y*s_,n=-x*s_+y*c;return[lon+e/kLon,lat+n/111320]};
-  const feats=CAR_PARTS.map(([pts,col,b,ht])=>({type:'Feature',properties:{c:col,b,h:ht},geometry:{type:'Polygon',coordinates:[[...pts.map(tr),tr(pts[0])]]}}));
+function carGeo(lat,lon,h){const c=Math.cos(rad(h)),s_=Math.sin(rad(h)),kLon=111320*Math.cos(rad(lat)),K=Math.min(4,Math.max(0.6,1.35*Math.pow(2,16.8-map.getZoom())));
+  const tr=([x,y])=>{x*=K;y*=K;const e=x*c+y*s_,n=-x*s_+y*c;return[lon+e/kLon,lat+n/111320]};
+  const feats=CAR_PARTS.map(([pts,col,b,ht])=>({type:'Feature',properties:{c:col,b:b*K,h:ht*K},geometry:{type:'Polygon',coordinates:[[...pts.map(tr),tr(pts[0])]]}}));
   const sh=[[-4.6,-8],[4.6,-8],[4.6,8.4],[-4.6,8.4]].map(([x,y])=>tr([x+0.8,y-0.8]));
   return{car:{type:'FeatureCollection',features:feats},shadow:{type:'FeatureCollection',features:[{type:'Feature',properties:{},geometry:{type:'Polygon',coordinates:[[...sh,sh[0]]]}}]}}}
 let carAnim=null;
 function carShow(on){['car3d','carShadow'].forEach(id=>map.getLayer(id)&&map.setLayoutProperty(id,'visibility',on?'visible':'none'))}
 function carTo(lat,lon,h){const now=performance.now();let from=carAnim?carNow(now):[lat,lon,h];carAnim={from,to:[lat,lon,h],t0:now};if(!carAnim.loop){carAnim.loop=true;requestAnimationFrame(carFrame)}}
 function carNow(now){const a=carAnim,t=Math.min(1,(now-a.t0)/1000),d=((a.to[2]-a.from[2]+540)%360)-180;return[a.from[0]+(a.to[0]-a.from[0])*t,a.from[1]+(a.to[1]-a.from[1])*t,(a.from[2]+d*t+360)%360]}
-function carFrame(now){if(!carAnim)return;const p=carNow(now),g=carGeo(...p);map.getSource('car')?.setData(g.car);map.getSource('carShadow')?.setData(g.shadow);
+let carLast=0;
+function carFrame(now){if(!carAnim)return;if(now-carLast>90){carLast=now;const p=carNow(now),g=carGeo(...p);map.getSource('car')?.setData(g.car);map.getSource('carShadow')?.setData(g.shadow)}
   if(S.navi)requestAnimationFrame(carFrame);else{carAnim.loop=false;carAnim=null;carShow(false)}}
 function addLayers(){
   if(!map.getSource('car')){map.addSource('car',{type:'geojson',data:EMPTY});map.addSource('carShadow',{type:'geojson',data:EMPTY})}
