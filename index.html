@@ -259,7 +259,9 @@ function addLayers(){
   L('route-line','route',{'line-color':'#1d8cff','line-width':['interpolate',['linear'],['zoom'],10,4.5,16,10,19,17]});
   L('done-line','done',{'line-color':'#9aa4b0','line-width':['interpolate',['linear'],['zoom'],10,4.5,16,10,19,17],'line-opacity':.9});
 }
-map.on('style.load',addLayers);
+function germanLabels(){try{for(const l of map.getStyle().layers){if(l.type!=='symbol')continue;const tf=map.getLayoutProperty(l.id,'text-field');if(!tf)continue;const js=JSON.stringify(tf);if(/name/.test(js)&&!/housenumber|ref/.test(js))map.setLayoutProperty(l.id,'text-field',['coalesce',['get','name:de'],['get','name'],['get','name:latin']])}}catch(e){}}
+map.on('style.load',()=>{addLayers();germanLabels()});
+map.on('load',()=>document.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show'));
 const setGeo=(k,coords)=>{GEO[k]=coords?{type:'FeatureCollection',features:(Array.isArray(coords[0][0])?coords:[coords]).map(c=>({type:'Feature',properties:{},geometry:{type:'LineString',coordinates:c.map(p=>[p[1],p[0]])}}))}:EMPTY;map.getSource(k)?.setData(GEO[k])};
 map.on('moveend',()=>{const c=map.getCenter();LS.set('view',{c:[c.lng,c.lat],z:map.getZoom()})});
 map.on('rotate',()=>{const b=map.getBearing();$('compass').classList.toggle('on',Math.abs(b)>2&&!S.navi);$('compIc').style.transform=`rotate(${-b}deg)`});
@@ -271,8 +273,8 @@ $('btnType').onclick=()=>{CFG.mapType=CFG.mapType==='sat'?'std':'sat';LS.set('cf
 if(CFG.mapType==='sat')$('btnType').style.color='#ff9f0a';
 
 // Marker
-function pinEl(cat,small,color){const d=document.createElement('div');d.className='pin'+(small?' sm':'');d.style.background=color||(cat?cat.bg:'#ff3b30');d.style.color=cat?cat.fg:'#fff';d.innerHTML=`<span>${glyphOf(cat)}</span>`;return d}
-function addMarker(el,lat,lon,onClick){const m=new maplibregl.Marker({element:el,anchor:el.classList.contains('pin')?'bottom':'center',offset:el.classList.contains('pin')?[12,0]:[0,0]}).setLngLat([lon,lat]).addTo(map);if(onClick)el.addEventListener('click',e=>{e.stopPropagation();S.clickGuard=Date.now();onClick()});return m}
+function pinEl(cat,small,color){const w=document.createElement('div');w.className='pinw';w.dataset.size=small?26:34;const d=document.createElement('div');d.className='pin'+(small?' sm':'');d.style.background=color||(cat?cat.bg:'#ff3b30');d.style.color=cat?cat.fg:'#fff';d.innerHTML=`<span>${glyphOf(cat)}</span>`;w.appendChild(d);return w}
+function addMarker(el,lat,lon,onClick){const sz=+el.dataset.size||0;const m=new maplibregl.Marker({element:el,anchor:'center',offset:[0,sz?-Math.round(sz*0.71):0]}).setLngLat([lon,lat]).addTo(map);if(onClick)el.addEventListener('click',e=>{e.stopPropagation();S.clickGuard=Date.now();onClick()});return m}
 function clearMarkers(){S.markers.forEach(m=>m.remove());S.markers=[]}
 const favIdx=p=>S.favs.findIndex(f=>Math.abs(f.lat-p.lat)<2e-5&&Math.abs(f.lon-p.lon)<2e-5);
 function drawFavs(){S.favMarkers.forEach(m=>m.remove());S.favMarkers=S.navi?[]:S.favs.map(f=>{const d=document.createElement('div');d.className='star';d.style.color='#fff';d.innerHTML=IC.star;return addMarker(d,f.lat,f.lon,()=>place(f))})}
