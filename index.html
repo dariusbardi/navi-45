@@ -532,7 +532,28 @@ function smoothBearing(target){if(S.camB==null)S.camB=target;const d=((target-S.
 // ---------- Route ----------
 const mopedOpts=(up=CFG.noUnpaved)=>isAM()?({top_speed:45,use_primary:CFG.quiet?0.1:0.45,use_hills:0.5,exclude_unpaved:up}):({use_highways:CFG.quiet?0.3:1,exclude_unpaved:up});
 const costOpts=up=>({[COST()]:mopedOpts(up)});
+function encode6(cs){let o='',pla=0,plo=0;const enc=v=>{v=v<0?~(v<<1):v<<1;let r='';while(v>=0x20){r+=String.fromCharCode((0x20|(v&0x1f))+63);v>>=5}return r+String.fromCharCode(v+63)};
+  for(const [la,lo] of cs){const a=Math.round(la*1e6),b=Math.round(lo*1e6);o+=enc(a-pla)+enc(b-plo);pla=a;plo=b}return o}
+// Lange Strecken (über ~170 km) in Etappen rechnen – der Routendienst rechnet höchstens 200 km am Stück
+async function getLong(a,b){
+  const D=hav([a.lat,a.lon],[b.lat,b.lon]),n=Math.ceil(D/110000),pts=[];for(let i=0;i<=n;i++){const t=i/n;pts.push({lat:a.lat+(b.lat-a.lat)*t,lon:a.lon+(b.lon-a.lon)*t})}
+  let coords=[],man=[],km=0,sec=0,fallback=false;
+  for(let i=0;i<n;i++){
+    const ask=async up=>(await fetch(`${VALHALLA}/route?json=${encodeURIComponent(JSON.stringify({locations:[pts[i],pts[i+1]],costing:COST(),costing_options:costOpts(up),directions_options:{units:'kilometers',language:'de-DE'}}))}`,{signal:withTimeout(30000)})).json();
+    let j=await ask(CFG.noUnpaved);if(!j.trip&&CFG.noUnpaved){j=await ask(false);fallback=true}
+    if(!j.trip)throw new Error(j.error||'Etappe '+(i+1)+' nicht gefunden');
+    const leg=j.trip.legs[0];let c=decode6(leg.shape);const off=coords.length?coords.length-1:0;if(coords.length)c=c.slice(1);
+    // Anschluss: Etappen-Endpunkte liegen auf derselben Straße, Lücke wird überbrückt
+    coords=coords.concat(c);
+    leg.maneuvers.forEach((m,k)=>{if(i<n-1&&[4,5,6].includes(m.type))return;if(i>0&&k===0&&[1,2,3].includes(m.type))return;man.push(Object.assign({},m,{begin_shape_index:m.begin_shape_index+off,end_shape_index:m.end_shape_index+off}))});
+    km+=j.trip.summary.length;sec+=j.trip.summary.time;
+    if(i===0)body(`<h2><span class="spin"></span>Lange Strecke wird berechnet …</h2><div class="sub">Etappe ${i+1} von ${n}</div>`,'peek');else if($('body').querySelector('.sub'))$('body').querySelector('.sub').textContent=`Etappe ${i+1} von ${n}`;
+  }
+  const cum=[0];for(let i=1;i<coords.length;i++)cum[i]=cum[i-1]+hav(coords[i-1],coords[i]);
+  return[{coords,cum,shape:encode6(coords),man,km,sec,fallback,long:n}];
+}
 async function getRoutes(a,b,alts=2){
+  if(hav([a.lat,a.lon],[b.lat,b.lon])>170000)return getLong(a,b);
   const ask=async up=>{const q={locations:[{lat:a.lat,lon:a.lon},{lat:b.lat,lon:b.lon}],costing:COST(),costing_options:costOpts(up),directions_options:{units:'kilometers',language:'de-DE'},alternates:alts};
     return (await fetch(`${VALHALLA}/route?json=${encodeURIComponent(JSON.stringify(q))}`,{signal:withTimeout(20000)})).json()};
   let j=await ask(CFG.noUnpaved),fallback=false;
@@ -557,6 +578,7 @@ async function loadAttrs(r){
 function limitAt(r,idx){if(!r?.edges)return 0;let k=r._ek||0;const E=r.edges;if(!E[k]||E[k].b>idx)k=0;while(k<E.length-1&&E[k].e<=idx)k++;r._ek=k;return E[k]&&E[k].b<=idx?E[k].sl:0}
 function showSign(v){const el=$('roadSign');if(v>0&&v<200){el.hidden=false;el.textContent=v}else el.hidden=true}
 function fillRouteNote(){const r=route(),n=$('upNote');if(!n||!r)return;const parts=[];
+  if(r.long)parts.push(`Lange Strecke: in ${r.long} Etappen berechnet. Planen Sie Pausen ein.`);
   if(r.slMax)parts.push(`Tempolimits auf der Strecke: ${r.slMin===r.slMax?r.slMin:r.slMin+'–'+r.slMax} km/h`);
   if(r.fallback)parts.push('<b>Ohne Schotterwege gibt es hier keine Route</b> – diese Route nutzt unbefestigte Wege.');
   else if(r.unpavedM>30)parts.push(`Enthält etwa ${fmtDist(r.unpavedM)} unbefestigte Wege.`);
@@ -586,7 +608,7 @@ async function routeTo(p){
   const from=S.from||{...S.me,name:'Mein Standort'};
   body(`<h2><span class="spin"></span>Route wird berechnet …</h2><div class="sub">${isAM()?'Nur Straßen, die mit 45 km/h erlaubt sind.':'Mit dem Auto.'}</div>`,'peek');
   try{S.routes=await getRoutes(from,p);S.sel=0;setFromMarker(S.from);drawRoutes(true);preview()}
-  catch(e){body(`<div class="head"><div><h2>Keine Route</h2></div><button class="x" id="x">✕</button></div><div class="note err">Keine erlaubte Strecke gefunden oder der Routendienst ist gerade nicht erreichbar. Bitte gleich nochmal versuchen.</div><div class="row"><button class="btn soft" id="again">Nochmal versuchen</button></div>`,'peek');$('x').onclick=()=>place(p,true);$('again').onclick=()=>routeTo(p)}
+  catch(e){body(`<div class="head"><div><h2>Keine Route</h2></div><button class="x" id="x">✕</button></div><div class="note err">${/No path|nicht gefunden/i.test(e.message)?(isAM()?'Zu diesem Punkt gibt es keinen Weg, den Sie mit 45 km/h fahren dürfen – er liegt vermutlich direkt an einer Autobahn, Kraftfahrstraße oder Fußgängerzone. Tippen Sie auf einen Punkt in der Nähe (z. B. einen Parkplatz).':'Zu diesem Punkt gibt es keinen Weg mit dem Auto. Tippen Sie auf einen Punkt in der Nähe.'):'Der Routendienst ist gerade nicht erreichbar. Bitte gleich nochmal versuchen.'}</div><div class="row"><button class="btn soft" id="again">Nochmal versuchen</button></div>`,'peek');$('x').onclick=()=>place(p,true);$('again').onclick=()=>routeTo(p)}
 }
 function fromUI(p,denied){
   body(`<div class="head"><div><h2>${denied?'Standort nicht erlaubt':'<span class="spin"></span>Standort wird gesucht …'}</h2><div class="sub">${denied?'Erlauben Sie den Standort in den Einstellungen – oder tippen Sie den Start ein:':'Bitte „Erlauben“ tippen – oder den Start eintippen:'}</div></div><button class="x" id="x" aria-label="Schließen">✕</button></div>
