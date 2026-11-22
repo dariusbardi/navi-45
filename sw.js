@@ -1,6 +1,6 @@
 // Navi 45 – Service Worker: App startet schnell und auch bei schlechtem Netz.
 // Routen, Suche, Tempolimits und Filialen brauchen weiterhin Internet.
-const VERSION = 'navi45-v10';
+const VERSION = 'navi45-v11';
 const SHELL = [
   './',
   './index.html',
@@ -8,6 +8,9 @@ const SHELL = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
+  './sprites/rocks.png',
+  './sprites/car.png',
+  './sprites/arrow.png',
   'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.js'
 ];
