@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Navi 45">
+<meta name="theme-color" content="#ffffff">
+<title>Navi 45</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* VOICE: wie Apple Karten – ruhig, hell, große Tippflächen
+   IDEA: Karte vollflächig, darüber ein schwebendes Blatt mit Suche
+   PICTURE: die Karte mit blauem Standortpunkt und blauer Route
+   COLOUR and TYPE: Weiß, Systemblau #007aff, Grün #34c759 für „Los", Rot für „Beenden"; Systemschrift
+   LAYOUT: Knöpfe rechts oben, Blatt unten, Navi-Tafel oben */
+:root{--blue:#007aff;--green:#34c759;--red:#ff3b30;--ink:#111;--mut:#6e6e73;--line:#e5e5ea;--fill:#f2f2f7;--sheet:rgba(255,255,255,.96);--nav:#1c5b3a}
+@media (prefers-color-scheme:dark){:root{--ink:#f5f5f7;--mut:#a1a1a6;--line:#38383a;--fill:#2c2c2e;--sheet:rgba(28,28,30,.96)}}
+*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none}
+body{font:17px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;color:var(--ink);background:#e8e8e8}
+#map{position:fixed;inset:0;z-index:0;background:#eae6df}
+button{font:inherit;cursor:pointer;border:0;color:inherit;background:none}
+button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+/* Knöpfe rechts oben */
+#ctrl{position:fixed;right:10px;top:calc(env(safe-area-inset-top) + 10px);z-index:20;display:flex;flex-direction:column;background:var(--sheet);border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.18);overflow:hidden}
+#ctrl button{width:46px;height:46px;display:grid;place-items:center;color:var(--blue)}
+#ctrl button+button{border-top:1px solid var(--line)}
+#badge{position:fixed;left:10px;top:calc(env(safe-area-inset-top) + 10px);z-index:20;background:var(--sheet);border-radius:12px;padding:8px 12px;font-size:13px;font-weight:600;box-shadow:0 2px 12px rgba(0,0,0,.18)}
+#badge b{color:var(--blue)}
+/* Blatt unten */
+#sheet{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--sheet);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border-radius:18px 18px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.15);padding:6px 16px calc(env(safe-area-inset-bottom) + 14px);max-width:640px;margin:0 auto;max-height:72vh;display:flex;flex-direction:column;transition:max-height .25s}
+#sheet.small{max-height:38vh}
+.grab{width:38px;height:5px;border-radius:3px;background:#c7c7cc;margin:2px auto 10px;flex:none}
+#body{overflow:auto;-webkit-overflow-scrolling:touch}
+.search{display:flex;align-items:center;gap:8px;background:var(--fill);border-radius:12px;padding:0 12px;height:44px}
+.search input{flex:1;border:0;background:none;font:inherit;font-size:17px;color:var(--ink);outline:none;height:44px}
+.search .x{color:var(--mut);font-size:15px;padding:6px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:12px 0 2px;scrollbar-width:none}
+.chip{flex:none;display:flex;align-items:center;gap:8px;background:var(--fill);border-radius:22px;height:40px;padding:0 14px;font-size:15px;font-weight:600}
+.chip i{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-style:normal;font-size:13px;font-weight:800}
+h2{font-size:24px;line-height:1.1;margin:4px 0 2px}
+.sub{color:var(--mut);font-size:15px}
+.sec{font-size:13px;color:var(--mut);font-weight:600;margin:16px 0 4px}
+.list{list-style:none;margin:0;padding:0}
+.list li{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.list .ic{flex:none;width:34px;height:34px;border-radius:50%;background:var(--fill);display:grid;place-items:center;color:var(--blue)}
+.list .tx{flex:1}.list .tx small{display:block;color:var(--mut);font-size:14px}
+.list .rt{white-space:nowrap;color:var(--mut);font-size:14px;text-align:right}
+.big{display:block;width:100%;height:52px;border-radius:14px;font-weight:700;font-size:18px;color:#fff;background:var(--blue);margin-top:12px}
+.big.go{background:var(--green)}.big.gray{background:var(--fill);color:var(--blue)}
+.two{display:flex;gap:10px}.two .big{flex:1}
+.head{display:flex;align-items:flex-start;gap:10px}.head>div{flex:1}
+.close{flex:none;width:32px;height:32px;border-radius:50%;background:var(--fill);color:var(--mut);font-size:18px;line-height:32px;text-align:center}
+.time{font-size:30px;font-weight:700;line-height:1.1}
+.time small{font-size:17px;color:var(--mut);font-weight:500}
+.from{display:flex;align-items:center;gap:10px;background:var(--fill);border-radius:12px;padding:10px 12px;margin-top:10px;font-size:15px}
+.from input{flex:1;border:0;background:none;font:inherit;color:var(--ink);outline:none}
+.note{background:#fff3cd;color:#5c4400;border-radius:12px;padding:10px 12px;font-size:14px;margin-top:10px}
+.note.err{background:#ffe0de;color:#7a1410}
+.steps .ic{color:var(--ink)}
+/* Navigation */
+#nav{display:none;position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top) + 8px);z-index:30;max-width:620px;margin:0 auto}
+.sign{background:var(--nav);color:#fff;border-radius:18px;padding:14px 16px;display:flex;gap:14px;align-items:center;box-shadow:0 6px 24px rgba(0,0,0,.35)}
+.sign svg{flex:none;width:58px;height:58px}
+#nDist{font-size:clamp(30px,9vw,42px);font-weight:700;line-height:1}
+#nText{font-size:19px;line-height:1.2;margin-top:3px;font-weight:600}
+#nThen{display:inline-block;margin-top:6px;background:#123d27;color:#fff;border-radius:12px;padding:6px 12px;font-size:15px}
+#navBar{display:none;position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--sheet);border-radius:18px 18px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.15);padding:14px 16px calc(env(safe-area-inset-bottom) + 14px);max-width:640px;margin:0 auto}
+.nb{display:flex;align-items:center;gap:12px}
+.nb .st{flex:1;text-align:center}.nb .st b{display:block;font-size:22px}.nb .st span{font-size:13px;color:var(--mut)}
+.spd{flex:none;width:58px;height:58px;border-radius:50%;background:#fff;color:#111;border:4px solid var(--red);display:grid;place-items:center;font-weight:800;font-size:21px;line-height:1;text-align:center}
+.spd small{display:block;font-size:10px;font-weight:600}
+.end{flex:none;background:var(--red);color:#fff;border-radius:22px;height:44px;padding:0 18px;font-weight:700}
+#recenter{display:none;position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom) + 110px);z-index:30;background:var(--sheet);color:var(--blue);border-radius:22px;height:44px;padding:0 16px;font-weight:700;box-shadow:0 2px 12px rgba(0,0,0,.25)}
+body.navi #sheet,body.navi #ctrl,body.navi #badge{display:none}
+body.navi #nav,body.navi #navBar{display:block}
+body.navi.free #recenter{display:block}
+/* Marker */
+.me{position:relative;width:22px;height:22px}
+.me .d{position:absolute;inset:0;border-radius:50%;background:var(--blue);border:3.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4)}
+.me .h{position:absolute;left:50%;top:50%;width:70px;height:70px;margin:-35px 0 0 -35px;background:conic-gradient(from -30deg,rgba(0,122,255,.35) 0 60deg,transparent 60deg);border-radius:50%;display:none}
+.pin{width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);display:grid;place-items:center}
+.pin span{transform:rotate(45deg);color:#fff;font-weight:800;font-size:13px}
+.leaflet-control-attribution{font-size:9px;margin-bottom:calc(env(safe-area-inset-bottom) + 2px)!important}
+@media (prefers-reduced-motion:reduce){#sheet{transition:none}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="badge">AM · max <b>45 km/h</b></div>
+<div id="ctrl">
+  <button id="btnLoc" aria-label="Meinen Standort zeigen"><svg id="locIc" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M21 3 3 10.5l7.5 3 3 7.5z"/></svg></button>
+  <button id="btnMute" aria-label="Ansagen an oder aus"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path id="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button>
+</div>
+
+<div id="sheet"><div class="grab"></div><div id="body"></div></div>
+
+<div id="nav"><div class="sign"><svg id="nIcon" viewBox="0 0 64 64" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></svg><div><div id="nDist">–</div><div id="nText">Route wird gestartet …</div></div></div><div id="nThen" hidden></div></div>
+<button id="recenter">Zentrieren</button>
+<div id="navBar"><div class="nb">
+  <div class="spd" id="nSpd">–<small>km/h</small></div>
+  <div class="st"><b id="nEta">–</b><span>Ankunft</span></div>
+  <div class="st"><b id="nMin">–</b><span>Min.</span></div>
+  <div class="st"><b id="nKm">–</b><span>km</span></div>
+  <button class="end" id="btnStop">Beenden</button>
+</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+{
+const VALHALLA='https://valhalla1.openstreetmap.de/route',PHOTON='https://photon.komoot.io',OVERPASS='https://overpass-api.de/api/interpreter';
+const $=id=>document.getElementById(id);
+const S={me:null,acc:0,heading:null,kmh:null,watch:null,follow:false,from:null,dest:null,route:null,navi:false,sim:null,lastIdx:0,off:0,rerouting:false,said:{},mute:false,wake:null,recent:[]};
+try{S.recent=JSON.parse(localStorage.getItem('navi45r')||'[]')}catch(e){}
+
+// ---------- Karte ----------
+const map=L.map('map',{zoomControl:false,attributionControl:true}).setView([48.137,11.575],13);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:20,attribution:'© OpenStreetMap · © CARTO · Route: Valhalla/FOSSGIS'}).addTo(map);
+let mMe=null,accC=null,mDest=null,lines=[],mcLayer=L.layerGroup().addTo(map);
+const pinIcon=(c,t='')=>L.divIcon({html:`<div class="pin" style="background:${c}"><span>${t}</span></div>`,className:'',iconSize:[30,30],iconAnchor:[15,32]});
+map.on('dragstart',()=>{S.follow=false;setLocIcon();if(S.navi)document.body.classList.add('free')});
+
+// ---------- Hilfen ----------
+const R=6371000,rad=x=>x*Math.PI/180;
+function hav(a,b){const dLa=rad(b[0]-a[0]),dLo=rad(b[1]-a[1]);const h=Math.sin(dLa/2)**2+Math.cos(rad(a[0]))*Math.cos(rad(b[0]))*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+function decode6(s){let i=0,la=0,lo=0,o=[];while(i<s.length){for(const k of [0,1]){let b,sh=0,r=0;do{b=s.charCodeAt(i++)-63;r|=(b&31)<<sh;sh+=5}while(b>=32);const d=(r&1)?~(r>>1):(r>>1);if(k===0)la+=d;else lo+=d}o.push([la/1e6,lo/1e6])}return o}
+const fmtDist=m=>m>=1000?(m/1000).toFixed(m>=10000?0:1).replace('.',',')+' km':(m>=100?Math.round(m/50)*50:Math.max(10,Math.round(m/10)*10))+' m';
+const spoken=m=>fmtDist(m).replace(' km',' Kilometern').replace(' m',' Metern');
+const mins=s=>Math.max(1,Math.round(s/60));
+const fmtTime=s=>{const m=mins(s);return m<60?m+' Min.':Math.floor(m/60)+' Std. '+(m%60)+' Min.'};
+const clock=s=>new Date(Date.now()+s*1000).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function label(f){const p=f.properties||{};const street=[p.street,p.housenumber].filter(Boolean).join(' ');const main=p.name||street||p.city||'Markierter Ort';const sub=[p.name&&street?street:'',p.postcode,p.city||p.town||p.village||p.district].filter(Boolean).join(', ');return{main,sub}}
+const body=(h,small)=>{$('body').innerHTML=h;$('sheet').classList.toggle('small',!!small);$('body').scrollTop=0};
+const saveRecent=p=>{S.recent=[p,...S.recent.filter(r=>r.name!==p.name)].slice(0,5);try{localStorage.setItem('navi45r',JSON.stringify(S.recent))}catch(e){}};
+
+// ---------- Startansicht ----------
+function home(){
+  if(mDest&&!S.route){map.removeLayer(mDest);mDest=null}
+  body(`<div class="search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="2.6"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="q" placeholder="Wohin?" enterkeyhint="search" autocomplete="off"></div>
+  <div class="chips">
+    <button class="chip" id="cMc"><i style="background:#ffbc0d;color:#c8102e">M</i>McDonald's Drive-in</button>
+    <button class="chip" id="cHere"><i style="background:var(--blue)">➤</i>Mein Standort</button>
+  </div>
+  ${S.recent.length?`<div class="sec">Zuletzt</div><ul class="list">${S.recent.map((r,i)=>`<li data-r="${i}"><span class="ic">🕘</span><span class="tx">${esc(r.name)}<small>${esc(r.sub)}</small></span></li>`).join('')}</ul>`:`<div class="sub" style="margin-top:12px">Tippen Sie auf die Karte, um einen Ort zu wählen – oder suchen Sie oben. Alle Routen ohne Autobahn und Kraftfahrstraße.</div>`}`,true);
+  const q=$('q');let t;
+  q.addEventListener('focus',()=>$('sheet').classList.remove('small'));
+  q.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>search(q.value.trim()),300)});
+  $('cMc').onclick=mcSearch;$('cHere').onclick=locate;
+  $('body').querySelectorAll('[data-r]').forEach(li=>li.onclick=()=>place(S.recent[+li.dataset.r]));
+}
+async function search(q){
+  const old=$('res');if(old)old.remove();if(q.length<2)return;
+  const c=S.me||{lat:map.getCenter().lat,lon:map.getCenter().lng};
+  try{const j=await (await fetch(`${PHOTON}/api/?q=${encodeURIComponent(q)}&lang=de&limit=8&lat=${c.lat}&lon=${c.lon}`)).json();
+    const items=j.features.map(f=>{const l=label(f);const lat=f.geometry.coordinates[1],lon=f.geometry.coordinates[0];return{name:l.main,sub:l.sub,lat,lon,d:S.me?hav([S.me.lat,S.me.lon],[lat,lon]):null}});
+    const ul=document.createElement('ul');ul.className='list';ul.id='res';ul.style.marginTop='8px';
+    ul.innerHTML=items.map((r,i)=>`<li data-i="${i}"><span class="ic">📍</span><span class="tx">${esc(r.name)}<small>${esc(r.sub)}</small></span><span class="rt">${r.d!=null?fmtDist(r.d):''}</span></li>`).join('')||'<li>Nichts gefunden</li>';
+    ul.onclick=e=>{const li=e.target.closest('[data-i]');if(li){document.activeElement.blur();place(items[+li.dataset.i])}};
+    $('body').querySelector('.chips').after(ul);
+  }catch(e){}
+}
+
+// ---------- Ort auf der Karte wählen ----------
+map.on('click',async e=>{
+  if(S.navi)return;
+  const lat=e.latlng.lat,lon=e.latlng.lng;let p={name:'Markierter Ort',sub:'',lat,lon};
+  place(p,true);
+  try{const j=await (await fetch(`${PHOTON}/reverse?lat=${lat}&lon=${lon}&lang=de`)).json();if(j.features[0]){const l=label(j.features[0]);p.name=l.main;p.sub=l.sub;if(S.dest===p)place(p,true)}}catch(e){}
+});
+function place(p,keepView){
+  S.dest=p;clearRoute();mcLayer.clearLayers();
+  if(mDest)map.removeLayer(mDest);mDest=L.marker([p.lat,p.lon],{icon:pinIcon('#ff3b30')}).addTo(map);
+  if(!keepView)map.setView([p.lat,p.lon],16);
+  const d=S.me?fmtDist(hav([S.me.lat,S.me.lon],[p.lat,p.lon])):'';
+  body(`<div class="head"><div><h2>${esc(p.name)}</h2><div class="sub">${esc(p.sub||'')}${d?(p.sub?' · ':'')+d+' entfernt':''}</div></div><button class="close" id="x" aria-label="Schließen">✕</button></div>
+  <button class="big" id="bR">🛵 Route</button>`,true);
+  $('x').onclick=()=>{S.dest=null;home()};$('bR').onclick=()=>routeTo(p);
+}
+
+// ---------- Standort live ----------
+function setLocIcon(){$('locIc').setAttribute('fill',S.follow?'currentColor':'none')}
+function startWatch(){
+  if(S.watch!=null||!navigator.geolocation)return;
+  S.watch=navigator.geolocation.watchPosition(p=>{
+    const c=p.coords;S.acc=c.accuracy;S.heading=(c.heading!=null&&!isNaN(c.heading))?c.heading:S.heading;S.kmh=c.speed!=null?c.speed*3.6:null;
+    if(!S.sim)onPos(c.latitude,c.longitude);
+  },e=>{if(e.code===1){S.watch=null;body(`<h2>Standort nicht erlaubt</h2><div class="note err">Bitte in den Einstellungen den Standort für diese Website erlauben (iPhone: Einstellungen › Datenschutz › Ortungsdienste › Safari-Websites › „Beim Verwenden").</div><button class="big gray" id="bk">Zurück</button>`,true);$('bk').onclick=home}},
+  {enableHighAccuracy:true,maximumAge:1000,timeout:20000});
+}
+function locate(){
+  if(!navigator.geolocation)return;
+  startWatch();S.follow=!S.follow||!S.me?true:false;setLocIcon();
+  if(S.me&&S.follow)map.setView([S.me.lat,S.me.lon],Math.max(map.getZoom(),16));
+}
+$('btnLoc').onclick=locate;
+function drawMe(lat,lon){
+  S.me={lat,lon};const h=S.heading!=null?`style="display:block;transform:rotate(${S.heading}deg)"`:'';
+  const html=`<div class="me"><div class="h" ${h}></div><div class="d"></div></div>`;
+  if(!mMe){mMe=L.marker([lat,lon],{icon:L.divIcon({html,className:'',iconSize:[22,22],iconAnchor:[11,11]}),zIndexOffset:1000,interactive:false}).addTo(map);
+    accC=L.circle([lat,lon],{radius:S.acc||20,color:'#007aff',weight:0,fillOpacity:.12,interactive:false}).addTo(map);
+    if(!S.dest&&!S.route){S.follow=true;setLocIcon();map.setView([lat,lon],16)}}
+  else{mMe.setLatLng([lat,lon]);mMe.setIcon(L.divIcon({html,className:'',iconSize:[22,22],iconAnchor:[11,11]}));accC.setLatLng([lat,lon]).setRadius(Math.min(S.acc||20,200))}
+  if(S.follow)map.panTo([lat,lon],{animate:true});
+}
+
+// ---------- Route: Moped-Profil, 45 km/h, keine Autobahn/Kraftfahrstraße ----------
+async function getRoute(a,b){
+  const q={locations:[{lat:a.lat,lon:a.lon},{lat:b.lat,lon:b.lon}],costing:'motor_scooter',
+    costing_options:{motor_scooter:{top_speed:45,use_primary:0.4,use_hills:0.5}},directions_options:{units:'kilometers',language:'de-DE'}};
+  const j=await (await fetch(VALHALLA+'?json='+encodeURIComponent(JSON.stringify(q)))).json();
+  if(!j.trip)throw new Error(j.error||'Keine Route gefunden');
+  const leg=j.trip.legs[0],coords=decode6(leg.shape),cum=[0];
+  for(let i=1;i<coords.length;i++)cum[i]=cum[i-1]+hav(coords[i-1],coords[i]);
+  return{coords,cum,man:leg.maneuvers,km:j.trip.summary.length,sec:j.trip.summary.time};
+}
+function clearRoute(){lines.forEach(l=>map.removeLayer(l));lines=[];S.route=null}
+function drawRoute(fit){
+  lines.forEach(l=>map.removeLayer(l));
+  lines=[L.polyline(S.route.coords,{color:'#0a52c4',weight:11,opacity:.9,interactive:false}).addTo(map),L.polyline(S.route.coords,{color:'#1a8cff',weight:7,interactive:false}).addTo(map)];
+  if(fit)map.fitBounds(lines[0].getBounds(),{paddingTopLeft:[30,70],paddingBottomRight:[30,Math.round(innerHeight*.42)]});
+}
+async function routeTo(p){
+  S.dest=p;saveRecent({name:p.name,sub:p.sub||'',lat:p.lat,lon:p.lon});
+  if(!S.from&&!S.me){startWatch();body(`<h2>Standort wird gesucht …</h2><div class="sub">Bitte „Erlauben" tippen. Oder Start eintippen:</div><div class="from">Von <input id="fq" placeholder="Startadresse"></div><ul class="list" id="fr"></ul>`,true);fromSearch(p);return}
+  const from=S.from||{...S.me,name:'Mein Standort'};
+  body(`<h2>Route wird berechnet …</h2><div class="sub">Nur Straßen, die mit 45 km/h erlaubt sind.</div>`,true);
+  try{S.route=await getRoute(from,p);drawRoute(true);preview(from,p)}
+  catch(e){body(`<h2>Keine Route</h2><div class="note err">Keine erlaubte Strecke gefunden oder der Routendienst ist gerade nicht erreichbar.</div><button class="big gray" id="bk">Zurück</button>`,true);$('bk').onclick=()=>place(p,true)}
+}
+function fromSearch(p){
+  const fq=$('fq');let t;
+  fq.oninput=()=>{clearTimeout(t);t=setTimeout(async()=>{try{const c=map.getCenter();const j=await (await fetch(`${PHOTON}/api/?q=${encodeURIComponent(fq.value)}&lang=de&limit=5&lat=${c.lat}&lon=${c.lng}`)).json();
+    const it=j.features.map(f=>{const l=label(f);return{name:l.main,sub:l.sub,lat:f.geometry.coordinates[1],lon:f.geometry.coordinates[0]}});
+    $('fr').innerHTML=it.map((r,i)=>`<li data-i="${i}"><span class="ic">🏁</span><span class="tx">${esc(r.name)}<small>${esc(r.sub)}</small></span></li>`).join('');
+    $('fr').onclick=e=>{const li=e.target.closest('[data-i]');if(li){S.from=it[+li.dataset.i];routeTo(p)}}}catch(e){}},300)};
+  const iv=setInterval(()=>{if(S.me&&!S.from&&$('fq')){clearInterval(iv);routeTo(p)}else if(!$('fq'))clearInterval(iv)},700);
+}
+function preview(from,p){
+  const r=S.route;
+  body(`<div class="head"><div><div class="time">${fmtTime(r.sec)}</div><div class="sub">${r.km.toFixed(1).replace('.',',')} km · Ankunft ${clock(r.sec)} · max. 45 km/h</div></div><button class="close" id="x" aria-label="Schließen">✕</button></div>
+  <div class="from">Von <b>${esc(from.name)}</b>${S.from?' <button id="useMe" style="margin-left:auto;color:var(--blue);font-weight:600">Mein Standort</button>':''}</div>
+  <div class="two"><button class="big go" id="go">Los</button><button class="big gray" id="sim" style="flex:.7">Probefahrt</button></div>
+  <div class="sec">Strecke</div>
+  <ul class="list steps">${r.man.map(m=>`<li><span class="ic">${arrow(m.type,20,'currentColor',3)}</span><span class="tx">${esc(m.instruction)}</span><span class="rt">${m.length?fmtDist(m.length*1000):''}</span></li>`).join('')}</ul>`);
+  $('sheet').classList.add('small');
+  $('x').onclick=()=>{clearRoute();S.from=null;place(p,true)};
+  $('go').onclick=()=>startNavi(false);$('sim').onclick=()=>startNavi(true);
+  if($('useMe'))$('useMe').onclick=()=>{S.from=null;routeTo(p)};
+}
+
+// ---------- McDonald's mit Drive-in ----------
+async function mcSearch(){
+  const c=S.me||{lat:map.getCenter().lat,lon:map.getCenter().lng};
+  if(!S.me)startWatch();
+  body(`<h2>McDonald's</h2><div class="sub">Suche in der Nähe …</div>`,true);mcLayer.clearLayers();
+  const q=`[out:json][timeout:25];nwr["amenity"="fast_food"]["brand"~"McDonald",i](around:20000,${c.lat},${c.lon});out center 40;`;
+  let els;
+  try{els=(await (await fetch(OVERPASS,{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}})).json()).elements}
+  catch(e){body(`<h2>McDonald's</h2><div class="note err">Die Suche ist gerade nicht erreichbar. Bitte gleich nochmal.</div><button class="big gray" id="bk">Zurück</button>`,true);$('bk').onclick=home;return}
+  let list=els.map(e=>{const t=e.tags||{},lat=e.lat??e.center?.lat,lon=e.lon??e.center?.lon;
+    return{lat,lon,dt:t.drive_through,name:"McDonald's",sub:[[t['addr:street'],t['addr:housenumber']].filter(Boolean).join(' '),t['addr:city']].filter(Boolean).join(', '),air:hav([c.lat,c.lon],[lat,lon])}}).filter(x=>x.lat);
+  if(!list.length){body(`<h2>McDonald's</h2><div class="note">Im Umkreis von 20 km nichts gefunden.</div><button class="big gray" id="bk">Zurück</button>`,true);$('bk').onclick=home;return}
+  const yes=list.filter(x=>x.dt==='yes');const cand=(yes.length?yes:list).sort((a,b)=>a.air-b.air).slice(0,4);
+  body(`<h2>McDonald's</h2><div class="sub">Prüfe die 45-km/h-Strecken …</div>`,true);
+  await Promise.all(cand.map(async x=>{try{const r=await getRoute(c,x);x.sec=r.sec;x.km=r.km}catch(e){x.sec=1e9}}));
+  cand.sort((a,b)=>a.sec-b.sec);
+  cand.forEach((x,i)=>L.marker([x.lat,x.lon],{icon:pinIcon('#ffbc0d','M')}).on('click',()=>pick(i)).addTo(mcLayer));
+  const pick=i=>{const x=cand[i];place({name:"McDonald's"+(x.dt==='yes'?' Drive-in':''),sub:x.sub,lat:x.lat,lon:x.lon},true)};
+  body(`<div class="head"><div><h2>McDonald's</h2><div class="sub">Sortiert nach Fahrzeit mit 45 km/h</div></div><button class="close" id="x">✕</button></div>
+  ${yes.length?'':'<div class="note">Bei keinem Restaurant hier ist ein Drive-in in der Karte eingetragen – das heißt nicht, dass es keinen gibt.</div>'}
+  <ul class="list">${cand.map((x,i)=>`<li data-i="${i}"><span class="ic" style="background:#ffbc0d;color:#c8102e;font-weight:800">M</span><span class="tx">${esc(x.sub||x.name)}<small>${x.dt==='yes'?'Drive-in':x.dt==='no'?'Kein Drive-in':'Drive-in nicht eingetragen'}</small></span><span class="rt">${x.sec<1e9?fmtTime(x.sec)+'<br>'+x.km.toFixed(1).replace('.',',')+' km':'keine Route'}</span></li>`).join('')}</ul>`);
+  $('x').onclick=()=>{mcLayer.clearLayers();home()};
+  $('body').querySelector('.list').onclick=e=>{const li=e.target.closest('[data-i]');if(li)pick(+li.dataset.i)};
+  map.fitBounds(L.latLngBounds(cand.map(x=>[x.lat,x.lon]).concat([[c.lat,c.lon]])),{paddingTopLeft:[30,70],paddingBottomRight:[30,Math.round(innerHeight*.45)]});
+}
+
+// ---------- Pfeile ----------
+function arrow(t,size,col='#fff',w=7){
+  const a={8:0,7:0,17:0,22:0,25:0,1:0,9:45,18:45,20:45,23:30,10:90,2:90,11:135,12:180,13:180,14:-135,15:-90,3:-90,16:-45,19:-45,21:-45,24:-30}[t]??0;
+  const inner=[4,5,6].includes(t)?'<path d="M18 58V8M18 10h28l-6 9 6 9H18"/>':[26,27].includes(t)?'<circle cx="32" cy="38" r="12"/><path d="M32 58v-8M41 29l8-14M41 15h8v8"/>':`<g transform="rotate(${a} 32 40)"><path d="M32 60V14M18 28l14-14 14 14"/></g>`;
+  return size?`<svg width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" stroke="${col}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`:inner;
+}
+
+// ---------- Sprache ----------
+function say(t){if(S.mute||!('speechSynthesis' in window)||!t)return;try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='de-DE';const v=speechSynthesis.getVoices().find(v=>v.lang&&v.lang.startsWith('de'));if(v)u.voice=v;speechSynthesis.speak(u)}catch(e){}}
+$('btnMute').onclick=()=>{S.mute=!S.mute;$('wave').style.display=S.mute?'none':'';if(S.mute)try{speechSynthesis.cancel()}catch(e){}};
+
+// ---------- Navigation ----------
+async function startNavi(sim){
+  if(!S.route)return;
+  document.body.classList.add('navi');document.body.classList.remove('free');
+  S.navi=true;S.follow=true;S.lastIdx=0;S.off=0;S.said={};
+  try{S.wake=await navigator.wakeLock?.request('screen')}catch(e){}
+  say(sim?'Probefahrt startet.':'Los geht\'s. Bitte fahren Sie vorsichtig.');
+  map.setZoom(17);
+  if(sim){let d=0;S.sim=setInterval(()=>{d+=45/3.6*3;const p=pointAt(d);if(!p){stopNavi();return}S.kmh=45;const q=pointAt(d+5);if(q)S.heading=(Math.atan2(rad(q[1]-p[1])*Math.cos(rad(p[0])),rad(q[0]-p[0]))*180/Math.PI+360)%360;onPos(p[0],p[1])},1000)}
+  else startWatch();
+}
+function stopNavi(){
+  S.navi=false;document.body.classList.remove('navi','free');clearInterval(S.sim);S.sim=null;
+  try{S.wake?.release()}catch(e){}try{speechSynthesis.cancel()}catch(e){}
+  if(S.route&&S.dest){drawRoute(true);preview(S.from||{...S.me,name:'Mein Standort'},S.dest)}else home();
+}
+$('btnStop').onclick=stopNavi;
+$('recenter').onclick=()=>{S.follow=true;document.body.classList.remove('free');if(S.me)map.setView([S.me.lat,S.me.lon],17)};
+function pointAt(d){const {coords:c,cum}=S.route;if(d>=cum[cum.length-1])return null;let i=1;while(cum[i]<d)i++;const f=(d-cum[i-1])/((cum[i]-cum[i-1])||1);return[c[i-1][0]+(c[i][0]-c[i-1][0])*f,c[i-1][1]+(c[i][1]-c[i-1][1])*f]}
+function project(p){
+  const {coords:c,cum}=S.route,k=Math.cos(rad(p[0]))*111320,kl=110540;let best={off:1e12,idx:0,along:0};
+  const scan=(a,b)=>{for(let i=a;i<b;i++){const ax=c[i][1]*k,ay=c[i][0]*kl,dx=c[i+1][1]*k-ax,dy=c[i+1][0]*kl-ay,px=p[1]*k,py=p[0]*kl,L2=dx*dx+dy*dy;
+    let t=L2?((px-ax)*dx+(py-ay)*dy)/L2:0;t=Math.max(0,Math.min(1,t));const o=Math.hypot(px-ax-t*dx,py-ay-t*dy);if(o<best.off)best={off:o,idx:i,along:cum[i]+t*(cum[i+1]-cum[i])}}};
+  scan(Math.max(0,S.lastIdx-30),Math.min(c.length-1,S.lastIdx+400));if(best.off>80)scan(0,c.length-1);return best;
+}
+async function onPos(lat,lon){
+  drawMe(lat,lon);if(!S.navi||!S.route)return;
+  $('nSpd').innerHTML=(S.kmh!=null?Math.round(S.kmh):'–')+'<small>km/h</small>';
+  const pr=project([lat,lon]);
+  if(pr.off>45){if(++S.off>=3&&!S.rerouting&&!S.sim){S.rerouting=true;$('nText').textContent='Neue Route …';say('Route wird neu berechnet.');
+    try{S.from=null;S.route=await getRoute({lat,lon},S.dest);drawRoute(false);S.lastIdx=0;S.said={}}catch(e){}S.rerouting=false;S.off=0}return}
+  S.off=0;S.lastIdx=pr.idx;
+  const r=S.route,total=r.cum[r.cum.length-1],left=total-pr.along;
+  if(left<25){$('nDist').textContent='Angekommen';$('nText').textContent=S.dest.name;$('nIcon').innerHTML=arrow(4);say('Sie haben Ihr Ziel erreicht.');S.navi=false;clearInterval(S.sim);setTimeout(()=>{S.navi=true;stopNavi()},5000);return}
+  let mi=r.man.findIndex((m,i)=>i>0&&r.cum[m.begin_shape_index]>pr.along+3);if(mi<0)mi=r.man.length-1;
+  const m=r.man[mi],nx=r.man[mi+1],dNext=r.cum[m.begin_shape_index]-pr.along;
+  $('nIcon').innerHTML=arrow(m.type);$('nDist').textContent=fmtDist(dNext);$('nText').textContent=m.instruction;
+  if(nx&&m.length<0.15){$('nThen').hidden=false;$('nThen').textContent='Danach: '+nx.instruction}else $('nThen').hidden=true;
+  const rest=left/total*r.sec;$('nEta').textContent=clock(rest);$('nMin').textContent=mins(rest);$('nKm').textContent=(left/1000).toFixed(1).replace('.',',');
+  const sd=S.said[mi]||(S.said[mi]={}),txt=m.verbal_transition_alert_instruction||m.instruction;
+  if(dNext<=800&&dNext>500&&!sd.far&&m.type!==4){sd.far=1;say('In '+spoken(dNext)+': '+txt)}
+  else if(dNext<=250&&dNext>60&&!sd.mid){sd.mid=sd.far=1;say('In '+spoken(dNext)+': '+txt)}
+  else if(dNext<=40&&!sd.now){sd.now=sd.mid=sd.far=1;say(m.verbal_pre_transition_instruction||m.instruction)}
+}
+
+// ---------- Start ----------
+home();
+if('speechSynthesis' in window)speechSynthesis.getVoices();
+try{navigator.permissions?.query({name:'geolocation'}).then(p=>{if(p.state==='granted')startWatch()})}catch(e){}
+}
+</script>
+</body>
+</html>
