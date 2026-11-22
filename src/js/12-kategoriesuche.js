@@ -26,21 +26,19 @@ function catCachePut(cat, c, list) {
       JSON.stringify({
         t: Date.now(),
         c: { lat: c.lat, lon: c.lon },
-        list: list
-          .slice(0, 40)
-          .map(x => ({
-            id: x.id,
-            cat: x.cat,
-            name: x.name,
-            sub: x.sub,
-            lat: x.lat,
-            lon: x.lon,
-            air: x.air,
-            sec: x.sec,
-            km: x.km,
-            dt: x.dt,
-            sock: x.sock
-          }))
+        list: list.slice(0, 40).map(x => ({
+          id: x.id,
+          cat: x.cat,
+          name: x.name,
+          sub: x.sub,
+          lat: x.lat,
+          lon: x.lon,
+          air: x.air,
+          sec: x.sec,
+          km: x.km,
+          dt: x.dt,
+          sock: x.sock
+        }))
       })
     );
     const keys = [];

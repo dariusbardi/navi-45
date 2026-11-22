@@ -33,6 +33,17 @@
 #map {
   transition: opacity 0.45s ease;
 }
+#offBar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--fill);
+  overflow: hidden;
+}
+#offBar i {
+  display: block;
+  height: 100%;
+  transition: width 0.3s;
+}
 .swatches {
   display: flex;
   gap: 10px;
