@@ -136,6 +136,10 @@ h2{font-size:24px;line-height:1.15;margin:2px 0 2px;font-weight:700}
 body.navi #sheet,body.navi #ctrl,body.navi #limit,body.navi #compass,body.navi .maplibregl-ctrl-top-left{display:none}
 body.navi #nav,body.navi #navBar{display:block}
 body.navi #navMute{display:grid}
+#navZoom{display:none;position:fixed;right:10px;bottom:calc(env(safe-area-inset-bottom) + 166px);z-index:30;flex-direction:column;border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+#navZoom button{width:46px;height:46px;font-size:24px;font-weight:600;color:var(--blue)}#navZoom button+button{border-top:1px solid var(--line)}
+body.navi #navZoom{display:flex}
+.lim{width:24px;height:24px;border-radius:50%;background:#fff;border:3px solid #e30613;display:grid;place-items:center;font:800 10px/1 -apple-system,Arial,sans-serif;color:#111;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 body.navi.free #recenter{display:block}
 /* Marker */
 .puck{width:26px;height:26px;position:relative}
@@ -195,6 +199,7 @@ body.car #limit{display:none}
 
 <div id="nav"><div class="sign"><svg id="nIcon" viewBox="0 0 64 64" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></svg><div><div id="nDist">–</div><div id="nText">Route wird gestartet …</div><div id="nSig" hidden></div></div></div><div id="nThen" hidden></div></div>
 <button id="recenter" class="glass">Zentrieren</button>
+<div id="navZoom" class="glass"><button id="zIn" aria-label="Näher heran">+</button><button id="zOut" aria-label="Weiter weg">−</button></div>
 <button id="navMute" class="glass" aria-label="Ansagen an oder aus"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/><path class="mx" d="M17 9l5 6M22 9l-5 6" style="display:none"/></svg></button>
 <div id="navBar" class="glass"><div class="nb">
   <div class="spd" id="nSpd">–<small>km/h</small></div>
@@ -311,7 +316,7 @@ function carShow(on){['car3d','carShadow'].forEach(id=>map.getLayer(id)&&map.set
 
 // Flüssige Navigation: ein Bildschleife bewegt Auto und Kamera entlang der Straße
 const lerpAng=(a,b,t)=>{const d=((b-a+540)%360)-180;return(a+d*t+360)%360};
-const NV={loop:false,a0:0,a1:0,t0:0,dur:1000,off:null,carH:null,camB:null,camZ:17,zT:17,last:0,carLast:0,lineLast:0};
+const NV={zAdj:0,userZ:false,loop:false,a0:0,a1:0,t0:0,dur:1000,off:null,carH:null,camB:null,camZ:17,zT:17,last:0,carLast:0,lineLast:0};
 function animAlong(now){const t=Math.min(1,(now-NV.t0)/NV.dur);return NV.a0+(NV.a1-NV.a0)*t}
 function navAlong(along){const now=performance.now();let cur=NV.loop&&!NV.off?animAlong(now):along;if(along<cur-8||along-cur>250)cur=along;NV.off=null;NV.a0=cur;NV.a1=along;NV.t0=now;NV.dur=1050;startLoop()}
 function navOff(lat,lon,h){const now=performance.now();const p0=NV.off?offNow(now):[lat,lon];NV.off={p0,p1:[lat,lon],h,t0:now};startLoop()}
@@ -327,9 +332,9 @@ function navFrame(now){
     if(now-NV.lineLast>400){NV.lineLast=now;const idx=Math.max(0,r.cum.findIndex(c=>c>a)-1);setGeo('done',r.coords.slice(0,idx+1).concat([pos]));setGeo('route',[pos].concat(r.coords.slice(idx+1)))}}
   NV.carH=NV.carH==null?tan:lerpAng(NV.carH,tan,1-Math.exp(-dt/110));
   NV.camB=NV.camB==null?look:lerpAng(NV.camB,look,1-Math.exp(-dt/650));
-  NV.camZ+=(NV.zT-NV.camZ)*(1-Math.exp(-dt/900));
+  const zGoal=Math.max(13,Math.min(19.5,NV.zT+NV.zAdj));NV.camZ+=(zGoal-NV.camZ)*(1-Math.exp(-dt/(NV.zFast?250:900)));
   S.me={lat:pos[0],lon:pos[1]};
-  if(!S.camFree)map.jumpTo({center:[pos[1],pos[0]],bearing:NV.camB,pitch:55,zoom:NV.camZ,padding:navPad()});
+  if(!S.camFree&&!NV.userZ)map.jumpTo({center:[pos[1],pos[0]],bearing:NV.camB,pitch:55,zoom:NV.camZ,padding:navPad()});
   if(now-NV.carLast>45){NV.carLast=now;const g=carGeo(pos[0],pos[1],NV.carH);map.getSource('car')?.setData(g.car);map.getSource('carShadow')?.setData(g.shadow)}
   requestAnimationFrame(navFrame)}
 function addLayers(){
@@ -360,7 +365,9 @@ map.on('moveend',()=>{const c=map.getCenter();LS.set('view',{c:[c.lng,c.lat],z:m
 map.on('rotate',()=>{const b=map.getBearing();$('compass').classList.toggle('on',Math.abs(b)>2&&!S.navi);$('compIc').style.transform=`rotate(${-b}deg)`});
 $('compass').onclick=()=>map.easeTo({bearing:0,pitch:0});
 const userMove=e=>{if(e.originalEvent){if(S.follow){S.follow=0;setLocIcon()}if(S.navi)document.body.classList.add('free')}};
-map.on('dragstart',userMove);map.on('zoomstart',e=>{if(e.originalEvent&&e.originalEvent.type!=='wheel'||e.originalEvent?.type==='wheel')userMove(e)});
+map.on('dragstart',userMove);
+map.on('zoomstart',e=>{if(!e.originalEvent)return;if(S.navi){NV.userZ=true;return}userMove(e)});
+map.on('zoomend',e=>{if(S.navi&&NV.userZ){NV.userZ=false;NV.zAdj+=map.getZoom()-NV.camZ;NV.camZ=map.getZoom()}});
 $('btn3d').onclick=()=>{const p=map.getPitch()>10?0:62;map.easeTo({pitch:p,zoom:p?Math.max(map.getZoom(),16):map.getZoom(),bearing:p?map.getBearing()-20:map.getBearing(),duration:900});$('btn3d').textContent=p?'2D':'3D'};
 $('btnType').onclick=()=>{CFG.mapType=CFG.mapType==='sat'?'std':'sat';LS.set('cfg',CFG);setTheme();$('btnType').style.color=CFG.mapType==='sat'?'#ff9f0a':''};
 if(CFG.mapType==='sat')$('btnType').style.color='#ff9f0a';
@@ -645,7 +652,8 @@ async function getRoutes(a,b,alts=2){
 }
 // Tempolimits und Straßenbelag je Abschnitt (aus OpenStreetMap über Valhalla)
 const TL='<svg viewBox="0 0 12 24"><rect x="0.5" y="0.5" width="11" height="23" rx="3" fill="#1c1c1e" stroke="#fff"/><circle cx="6" cy="5.5" r="2.6" fill="#ff3b30"/><circle cx="6" cy="12" r="2.6" fill="#ffcc00"/><circle cx="6" cy="18.5" r="2.6" fill="#34c759"/></svg>';
-let sigMarkers=[];
+let sigMarkers=[],limMarkers=[];
+function drawLimits(r){limMarkers.forEach(m=>m.remove());limMarkers=[];if(!r?.edges)return;let prev=-1,lastPos=null;for(const e of r.edges){if(!(e.sl>0&&e.sl<200)||e.sl===prev)continue;prev=e.sl;const c=r.coords[e.b];if(!c)continue;if(lastPos&&hav(lastPos,c)<120&&limMarkers.length)limMarkers.pop().remove();lastPos=c;const el=document.createElement('div');el.className='lim';el.textContent=e.sl;el.title='Tempo '+e.sl;limMarkers.push(new maplibregl.Marker({element:el,anchor:'center',offset:[-16,0]}).setLngLat([c[1],c[0]]).addTo(map));if(limMarkers.length>120)break}}
 function drawSignals(r){sigMarkers.forEach(m=>m.remove());sigMarkers=[];if(!r?.sig)return;r.sig.slice(0,150).forEach(i=>{const el=document.createElement('div');el.className='tl';el.innerHTML=TL;el.title='Ampel';sigMarkers.push(new maplibregl.Marker({element:el,anchor:'bottom',offset:[10,-2]}).setLngLat([r.coords[i][1],r.coords[i][0]]).addTo(map))})}
 const ATTRS=['node.traffic_signal','edge.speed_limit','edge.unpaved','edge.surface','edge.length','edge.begin_shape_index','edge.end_shape_index'];
 async function loadAttrs(r){
@@ -657,7 +665,7 @@ async function loadAttrs(r){
     r.sig=[...new Set((j.edges||[]).filter(e=>e.end_node&&e.end_node.traffic_signal).map(e=>e.end_shape_index))].sort((a,b)=>a-b);
     const sl=r.edges.map(e=>e.sl).filter(v=>v>0&&v<200);r.slMin=sl.length?Math.min(...sl):0;r.slMax=sl.length?Math.max(...sl):0;
   }catch(e){}r.attrBusy=false;
-  if(r===route()){drawSignals(r);if($('upNote'))fillRouteNote()}
+  if(r===route()){drawSignals(r);drawLimits(r);if($('upNote'))fillRouteNote()}
 }
 function limitAt(r,idx){if(!r?.edges)return 0;let k=r._ek||0;const E=r.edges;if(!E[k]||E[k].b>idx)k=0;while(k<E.length-1&&E[k].e<=idx)k++;r._ek=k;return E[k]&&E[k].b<=idx?E[k].sl:0}
 function showSign(v){const el=$('roadSign');if(v>0&&v<200){el.hidden=false;el.textContent=v}else el.hidden=true}
@@ -676,11 +684,11 @@ async function freeLimit(){
     const e=(j.edges||[]).at(-1);S.freeLim=e?+e.speed_limit:0;if(!S.navi)showSign(S.freeLim)}catch(e){}
 }
 setInterval(freeLimit,8000);
-function clearRoute(){drawSignals(null);S.routes=[];S.sel=0;setGeo('alt',null);setGeo('route',null);setGeo('done',null);setFromMarker(null)}
+function clearRoute(){drawSignals(null);drawLimits(null);S.routes=[];S.sel=0;setGeo('alt',null);setGeo('route',null);setGeo('done',null);setFromMarker(null)}
 function drawRoutes(fit){
   const r=route();if(!r)return;
   const others=S.routes.filter((_,i)=>i!==S.sel).map(x=>x.coords);
-  setGeo('alt',others.length?others:null);setGeo('route',r.coords);setGeo('done',null);drawSignals(r.sig?r:null);
+  setGeo('alt',others.length?others:null);setGeo('route',r.coords);setGeo('done',null);drawSignals(r.sig?r:null);drawLimits(r.edges?r:null);
   if(fit){const b=new maplibregl.LngLatBounds();S.routes.forEach(x=>x.coords.forEach(p=>b.extend([p[1],p[0]])));fitTo(b,H.half())}
 }
 map.on('click','alt-line',e=>{if(S.navi||S.routes.length<2)return;S.clickGuard=Date.now();
@@ -847,7 +855,7 @@ document.addEventListener('visibilitychange',keepAwake);
 function startNavi(sim){
   if(!route())return;unlockSpeech();
   document.body.classList.add('navi');document.body.classList.remove('free');
-  S.navi=true;S.lastIdx=0;S.off=0;S.said={};S.isSim=sim;S.camFree=false;S.camB=null;S.fbHits=0;NV.carH=NV.camB=null;NV.off=null;NV.camZ=map.getZoom();NV.zT=17;if(meEl)meEl.style.visibility='hidden';keepAwake();drawFavs();showSign(0);loadAttrs(route());
+  S.navi=true;S.lastIdx=0;S.off=0;S.said={};S.isSim=sim;NV.zAdj=0;S.camFree=false;S.camB=null;S.fbHits=0;NV.carH=NV.camB=null;NV.off=null;NV.camZ=map.getZoom();NV.zT=17;if(meEl)meEl.style.visibility='hidden';keepAwake();drawFavs();showSign(0);loadAttrs(route());
   setGeo('alt',null);
   const first=route().man[0];
   say((sim?'Probefahrt. ':'')+(first?.verbal_pre_transition_instruction||first?.instruction||'Los geht’s.'));
@@ -862,6 +870,7 @@ function stopNavi(){
   if(route()&&S.dest){map.easeTo({pitch:0,bearing:0,duration:500});drawRoutes(true);preview()}else home();
 }
 $('btnStop').onclick=stopNavi;
+$('zIn').onclick=()=>{NV.zAdj=Math.min(2.5,NV.zAdj+0.6);NV.zFast=true;setTimeout(()=>NV.zFast=false,600)};$('zOut').onclick=()=>{NV.zAdj=Math.max(-3.5,NV.zAdj-0.6);NV.zFast=true;setTimeout(()=>NV.zFast=false,600)};
 $('recenter').onclick=()=>{document.body.classList.remove('free');S.camFree=false;NV.camB=null};
 map.on('dragstart',e=>{if(S.navi&&e.originalEvent)S.camFree=true});
 function pointAt(d){const {coords:c,cum}=route();if(d>=cum[cum.length-1])return null;let i=1;while(cum[i]<d)i++;const f=(d-cum[i-1])/((cum[i]-cum[i-1])||1);return[c[i-1][0]+(c[i][0]-c[i-1][0])*f,c[i-1][1]+(c[i][1]-c[i-1][1])*f]}
