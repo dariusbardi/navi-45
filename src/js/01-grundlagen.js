@@ -120,7 +120,7 @@ const fmtDist = m =>
     ? comma((m / 1000).toFixed(m >= 10000 ? 0 : 1)) + ' km'
     : (m >= 100 ? Math.round(m / 50) * 50 : Math.max(10, Math.round(m / 10) * 10)) + ' m';
 const spokenDist = m =>
-  m >= 1000
+  m >= 950
     ? m < 1500
       ? 'einem Kilometer'
       : comma((Math.round(m / 500) / 2).toString()) + ' Kilometern'

@@ -23,7 +23,14 @@ function scoutMap() {
   });
   return scout;
 }
-async function scoutAt(lat, lon, subs) {
+// Nur eine Abfrage gleichzeitig – sonst verschiebt eine zweite Suche die Zweitkarte mitten in der ersten
+let scoutQueue = Promise.resolve();
+function scoutAt(lat, lon, subs) {
+  const job = scoutQueue.then(() => scoutAtNow(lat, lon, subs));
+  scoutQueue = job.catch(() => {});
+  return job;
+}
+async function scoutAtNow(lat, lon, subs) {
   const m = scoutMap();
   if (!m.isStyleLoaded())
     await new Promise(r => {
@@ -34,6 +41,7 @@ async function scoutAt(lat, lon, subs) {
       });
     });
   m.jumpTo({ center: [lon, lat], zoom: 14 });
+  m.triggerRepaint(); // sorgt dafür, dass „idle“ auch bei gleicher Position kommt
   await new Promise(r => {
     const t = setTimeout(r, 9000);
     m.once('idle', () => {

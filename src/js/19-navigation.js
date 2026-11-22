@@ -15,6 +15,7 @@ function startNavi(sim) {
   S.off = 0;
   S.said = {};
   S.isSim = sim;
+  clearTimeout(S.arriveT); // eine alte „Angekommen“-Zeitschaltung darf die neue Fahrt nicht beenden
   NV.zAdj = 0;
   carShow(false);
   BAT.start = CFG.battery;
@@ -40,12 +41,11 @@ function startNavi(sim) {
   say((sim ? 'Probefahrt. ' : '') + (first?.verbal_pre_transition_instruction || first?.instruction || 'Los geht’s.'));
   S.said[0] = { far: 1, mid: 1, now: 1 };
   if (sim) {
-    let d = 0;
+    S.simD = 0; // gefahrene Meter der Probefahrt (wird bei neuer Route auf 0 gesetzt)
     const v = isAM() ? 45 : 50;
     const step = () => {
-      d += (v / 3.6) * 2;
-      const r = route(),
-        p = pointAt(d);
+      S.simD += (v / 3.6) * 2;
+      const p = pointAt(S.simD);
       if (!p || !S.navi) {
         if (S.navi) stopNavi();
         return;
@@ -61,6 +61,7 @@ function startNavi(sim) {
   }
 }
 function stopNavi() {
+  clearTimeout(S.arriveT);
   S.navi = false;
   S.isSim = false;
   document.body.classList.remove('navi', 'free');
@@ -114,8 +115,16 @@ map.on('dragstart', e => {
 function pointAt(d) {
   const { coords: c, cum } = route();
   if (d >= cum[cum.length - 1]) return null;
-  let i = 1;
-  while (cum[i] < d) i++;
+  if (d < 0) d = 0;
+  // Binärsuche – wichtig bei langen Strecken, weil das pro Bild mehrmals aufgerufen wird
+  let lo = 1,
+    hi = cum.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (cum[mid] < d) lo = mid + 1;
+    else hi = mid;
+  }
+  const i = lo;
   const f = (d - cum[i - 1]) / (cum[i] - cum[i - 1] || 1);
   return [c[i - 1][0] + (c[i][0] - c[i - 1][0]) * f, c[i - 1][1] + (c[i][1] - c[i - 1][1]) * f];
 }
@@ -205,7 +214,7 @@ async function onPos(lat, lon) {
     say(dm?.verbal_pre_transition_instruction || 'Sie haben Ihr Ziel erreicht.');
     clearInterval(S.sim);
     S.navi = false;
-    setTimeout(() => {
+    S.arriveT = setTimeout(() => {
       S.navi = true;
       stopNavi();
     }, 6000);
@@ -216,6 +225,11 @@ async function onPos(lat, lon) {
   const m = r.man[mi],
     nx = r.man[mi + 1],
     dNext = r.cum[m.begin_shape_index] - pr.along;
+  // Zwischenhalt passiert: bei einer Neuberechnung nicht wieder dorthin zurückschicken
+  if (S.via) {
+    const vi = r.man.findIndex(x => x.via);
+    if (vi >= 0 && mi > vi) S.via = null;
+  }
   NV.zT = dNext < 180 ? 17.6 : kmh > 35 ? 16.7 : 17.1;
   const sigAt = r.sig ? r.sig.find(i => r.cum[i] > pr.along + 3) : null,
     sigD = sigAt != null ? r.cum[sigAt] - pr.along : null;

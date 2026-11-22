@@ -76,11 +76,16 @@ const setGeo = (k, coords) => {
     : EMPTY;
   map.getSource(k)?.setData(GEO[k]);
 };
+let viewSaved = 0;
 map.on('moveend', () => {
+  // höchstens alle 3 Sekunden speichern – beim Fahren bewegt sich die Karte 60-mal pro Sekunde
+  if (Date.now() - viewSaved < 3000) return;
+  viewSaved = Date.now();
   const c = map.getCenter();
   LS.set('view', { c: [c.lng, c.lat], z: map.getZoom() });
 });
 map.on('rotate', () => {
+  if (S.navi) return; // Kompass ist im Navi-Modus ausgeblendet
   const b = map.getBearing();
   $('compass').classList.toggle('on', Math.abs(b) > 2 && !S.navi);
   $('compIc').style.transform = `rotate(${-b}deg)`;

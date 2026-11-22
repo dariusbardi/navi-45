@@ -16,6 +16,7 @@ addEventListener('beforeinstallprompt', e => {
   if ($('q') && !$('q').value) home(sheetState);
 });
 function home(state) {
+  killCat();
   S.dest = null;
   S.pending = null;
   if (!route()) {

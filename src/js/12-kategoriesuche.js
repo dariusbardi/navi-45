@@ -228,6 +228,7 @@ async function catSearch(cat) {
     });
     await loadSockets(list);
   }
+  if (!alive()) return;
   if (!list.length) {
     if (cached && cached.list.length) {
       state.busy = false;

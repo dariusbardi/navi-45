@@ -3,7 +3,7 @@
 // - Seite selbst: immer zuerst die neueste Version aus dem Netz
 // - Kartenkacheln: erst die Offline-Karte (navi45-offline), dann der laufende Kartenspeicher, dann das Netz
 // - Routen, Suche, Tempolimits: immer direkt ins Netz (nicht gespeichert)
-const VERSION = 'navi45-v12';
+const VERSION = 'navi45-v13';
 const SHELL = [
   './',
   './index.html',

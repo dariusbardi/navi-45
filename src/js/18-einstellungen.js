@@ -1,5 +1,6 @@
 // ---------- Einstellungen ----------
 function settings() {
+  killCat();
   const vs = voices().sort((a, b) => scoreVoice(b) - scoreVoice(a)),
     cur = bestVoice();
   body(

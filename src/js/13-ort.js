@@ -52,7 +52,11 @@ map.on('click', async e => {
   } catch (e) {}
 });
 function place(p, keepView) {
-  if (S.dest !== p && !S.pickVia) S.via = null;
+  killCat();
+  if (S.dest !== p && !S.pickVia) {
+    S.via = null;
+    if (S.me) S.from = null; // neues Ziel: Start ist wieder der eigene Standort
+  }
   S.dest = p;
   S.pending = null;
   clearRoute();

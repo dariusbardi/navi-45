@@ -57,6 +57,10 @@ function fitTo(b, bottom, maxZoom = 17) {
   g.addEventListener('pointercancel', up);
   addEventListener('resize', () => sheetTo(sheetState));
 }
+// Eine laufende Kategoriesuche darf eine andere Ansicht nicht mehr überschreiben
+const killCat = () => {
+  if (S.catState) S.catState.dead = true;
+};
 const body = (h, state) => {
   $('body').innerHTML = h;
   $('body').scrollTop = 0;

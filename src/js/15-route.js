@@ -395,6 +395,19 @@ async function routeTo(p) {
   S.pending = null;
   clearMarkers();
   const from = S.from || { ...S.me, name: 'Mein Standort' };
+  if (hav([from.lat, from.lon], [p.lat, p.lon]) < 30) {
+    body(
+      `<div class="head"><div><h2>Sie sind schon da</h2><div class="sub">Start und Ziel liegen am selben Ort.</div></div><button class="x" id="x" aria-label="Schließen">✕</button></div>${S.from ? '<div class="row"><button class="btn soft" id="useMe">Von meinem Standort</button></div>' : ''}`,
+      'peek'
+    );
+    $('x').onclick = () => place(p, true);
+    if ($('useMe'))
+      $('useMe').onclick = () => {
+        S.from = null;
+        routeTo(p);
+      };
+    return;
+  }
   body(
     `<h2><span class="spin"></span>Route wird berechnet …</h2><div class="sub">${isAM() ? 'Nur Straßen, die mit 45 km/h erlaubt sind.' : 'Mit dem Auto.'}</div>`,
     'peek'

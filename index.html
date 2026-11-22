@@ -1418,7 +1418,7 @@ const fmtDist = m =>
     ? comma((m / 1000).toFixed(m >= 10000 ? 0 : 1)) + ' km'
     : (m >= 100 ? Math.round(m / 50) * 50 : Math.max(10, Math.round(m / 10) * 10)) + ' m';
 const spokenDist = m =>
-  m >= 1000
+  m >= 950
     ? m < 1500
       ? 'einem Kilometer'
       : comma((Math.round(m / 500) / 2).toString()) + ' Kilometern'
@@ -2004,7 +2004,8 @@ function navFrame(now) {
   NV.camB = NV.camB == null ? look : lerpAng(NV.camB, look, 1 - Math.exp(-dt / 650));
   const zGoal = Math.max(13, Math.min(19.5, NV.zT + NV.zAdj));
   NV.camZ += (zGoal - NV.camZ) * (1 - Math.exp(-dt / (NV.zFast ? 250 : 900)));
-  S.me = { lat: pos[0], lon: pos[1] };
+  S.navPos = { lat: pos[0], lon: pos[1] }; // angezeigte Fahrzeugposition
+  if (!S.isSim) S.me = S.navPos; // bei der Probefahrt bleibt der echte Standort unverändert
   if (!S.camFree && !NV.userZ)
     map.jumpTo({ center: [pos[1], pos[0]], bearing: NV.camB, pitch: 55, zoom: NV.camZ, padding: navPad() });
   carDraw(pos[0], pos[1], NV.carH);
@@ -2090,11 +2091,16 @@ const setGeo = (k, coords) => {
     : EMPTY;
   map.getSource(k)?.setData(GEO[k]);
 };
+let viewSaved = 0;
 map.on('moveend', () => {
+  // höchstens alle 3 Sekunden speichern – beim Fahren bewegt sich die Karte 60-mal pro Sekunde
+  if (Date.now() - viewSaved < 3000) return;
+  viewSaved = Date.now();
   const c = map.getCenter();
   LS.set('view', { c: [c.lng, c.lat], z: map.getZoom() });
 });
 map.on('rotate', () => {
+  if (S.navi) return; // Kompass ist im Navi-Modus ausgeblendet
   const b = map.getBearing();
   $('compass').classList.toggle('on', Math.abs(b) > 2 && !S.navi);
   $('compIc').style.transform = `rotate(${-b}deg)`;
@@ -2278,6 +2284,10 @@ function fitTo(b, bottom, maxZoom = 17) {
   g.addEventListener('pointercancel', up);
   addEventListener('resize', () => sheetTo(sheetState));
 }
+// Eine laufende Kategoriesuche darf eine andere Ansicht nicht mehr überschreiben
+const killCat = () => {
+  if (S.catState) S.catState.dead = true;
+};
 const body = (h, state) => {
   $('body').innerHTML = h;
   $('body').scrollTop = 0;
@@ -2303,6 +2313,7 @@ addEventListener('beforeinstallprompt', e => {
   if ($('q') && !$('q').value) home(sheetState);
 });
 function home(state) {
+  killCat();
   S.dest = null;
   S.pending = null;
   if (!route()) {
@@ -2443,7 +2454,14 @@ function scoutMap() {
   });
   return scout;
 }
-async function scoutAt(lat, lon, subs) {
+// Nur eine Abfrage gleichzeitig – sonst verschiebt eine zweite Suche die Zweitkarte mitten in der ersten
+let scoutQueue = Promise.resolve();
+function scoutAt(lat, lon, subs) {
+  const job = scoutQueue.then(() => scoutAtNow(lat, lon, subs));
+  scoutQueue = job.catch(() => {});
+  return job;
+}
+async function scoutAtNow(lat, lon, subs) {
   const m = scoutMap();
   if (!m.isStyleLoaded())
     await new Promise(r => {
@@ -2454,6 +2472,7 @@ async function scoutAt(lat, lon, subs) {
       });
     });
   m.jumpTo({ center: [lon, lat], zoom: 14 });
+  m.triggerRepaint(); // sorgt dafür, dass „idle“ auch bei gleicher Position kommt
   await new Promise(r => {
     const t = setTimeout(r, 9000);
     m.once('idle', () => {
@@ -2760,6 +2779,7 @@ async function catSearch(cat) {
     });
     await loadSockets(list);
   }
+  if (!alive()) return;
   if (!list.length) {
     if (cached && cached.list.length) {
       state.busy = false;
@@ -2870,7 +2890,11 @@ map.on('click', async e => {
   } catch (e) {}
 });
 function place(p, keepView) {
-  if (S.dest !== p && !S.pickVia) S.via = null;
+  killCat();
+  if (S.dest !== p && !S.pickVia) {
+    S.via = null;
+    if (S.me) S.from = null; // neues Ziel: Start ist wieder der eigene Standort
+  }
   S.dest = p;
   S.pending = null;
   clearRoute();
@@ -3642,6 +3666,19 @@ async function routeTo(p) {
   S.pending = null;
   clearMarkers();
   const from = S.from || { ...S.me, name: 'Mein Standort' };
+  if (hav([from.lat, from.lon], [p.lat, p.lon]) < 30) {
+    body(
+      `<div class="head"><div><h2>Sie sind schon da</h2><div class="sub">Start und Ziel liegen am selben Ort.</div></div><button class="x" id="x" aria-label="Schließen">✕</button></div>${S.from ? '<div class="row"><button class="btn soft" id="useMe">Von meinem Standort</button></div>' : ''}`,
+      'peek'
+    );
+    $('x').onclick = () => place(p, true);
+    if ($('useMe'))
+      $('useMe').onclick = () => {
+        S.from = null;
+        routeTo(p);
+      };
+    return;
+  }
   body(
     `<h2><span class="spin"></span>Route wird berechnet …</h2><div class="sub">${isAM() ? 'Nur Straßen, die mit 45 km/h erlaubt sind.' : 'Mit dem Auto.'}</div>`,
     'peek'
@@ -3974,11 +4011,11 @@ function askCharge(b, rangeLeft, need) {
   };
 }
 async function chargeNow() {
-  if (!S.me) return;
+  if (!(S.navPos || S.me)) return;
   S.chargeBusy = true;
   $('nText').textContent = 'Suche Ladestation …';
   try {
-    const me = S.me;
+    const me = S.navPos || S.me;
     let got = await scoutAt(me.lat, me.lon, ['charging_station']);
     got.forEach(g => (g.air = hav([me.lat, me.lon], [g.lat, g.lon])));
     got.sort((a, b) => a.air - b.air);
@@ -4000,6 +4037,7 @@ async function chargeNow() {
     S.lastIdx = 0;
     S.said = {};
     NV.a0 = NV.a1 = 0;
+    S.simD = 0;
     say(
       `Neue Route über ${pick.name}, ${fmtDist(pick.air).replace(' m', ' Meter').replace(' km', ' Kilometer')} entfernt.`,
       true
@@ -4177,6 +4215,7 @@ function tacho() {
 // ===== 18-einstellungen.js =====
 // ---------- Einstellungen ----------
 function settings() {
+  killCat();
   const vs = voices().sort((a, b) => scoreVoice(b) - scoreVoice(a)),
     cur = bestVoice();
   body(
@@ -4362,6 +4401,7 @@ function startNavi(sim) {
   S.off = 0;
   S.said = {};
   S.isSim = sim;
+  clearTimeout(S.arriveT); // eine alte „Angekommen“-Zeitschaltung darf die neue Fahrt nicht beenden
   NV.zAdj = 0;
   carShow(false);
   BAT.start = CFG.battery;
@@ -4387,12 +4427,11 @@ function startNavi(sim) {
   say((sim ? 'Probefahrt. ' : '') + (first?.verbal_pre_transition_instruction || first?.instruction || 'Los geht’s.'));
   S.said[0] = { far: 1, mid: 1, now: 1 };
   if (sim) {
-    let d = 0;
+    S.simD = 0; // gefahrene Meter der Probefahrt (wird bei neuer Route auf 0 gesetzt)
     const v = isAM() ? 45 : 50;
     const step = () => {
-      d += (v / 3.6) * 2;
-      const r = route(),
-        p = pointAt(d);
+      S.simD += (v / 3.6) * 2;
+      const p = pointAt(S.simD);
       if (!p || !S.navi) {
         if (S.navi) stopNavi();
         return;
@@ -4408,6 +4447,7 @@ function startNavi(sim) {
   }
 }
 function stopNavi() {
+  clearTimeout(S.arriveT);
   S.navi = false;
   S.isSim = false;
   document.body.classList.remove('navi', 'free');
@@ -4461,8 +4501,16 @@ map.on('dragstart', e => {
 function pointAt(d) {
   const { coords: c, cum } = route();
   if (d >= cum[cum.length - 1]) return null;
-  let i = 1;
-  while (cum[i] < d) i++;
+  if (d < 0) d = 0;
+  // Binärsuche – wichtig bei langen Strecken, weil das pro Bild mehrmals aufgerufen wird
+  let lo = 1,
+    hi = cum.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (cum[mid] < d) lo = mid + 1;
+    else hi = mid;
+  }
+  const i = lo;
   const f = (d - cum[i - 1]) / (cum[i] - cum[i - 1] || 1);
   return [c[i - 1][0] + (c[i][0] - c[i - 1][0]) * f, c[i - 1][1] + (c[i][1] - c[i - 1][1]) * f];
 }
@@ -4552,7 +4600,7 @@ async function onPos(lat, lon) {
     say(dm?.verbal_pre_transition_instruction || 'Sie haben Ihr Ziel erreicht.');
     clearInterval(S.sim);
     S.navi = false;
-    setTimeout(() => {
+    S.arriveT = setTimeout(() => {
       S.navi = true;
       stopNavi();
     }, 6000);
@@ -4563,6 +4611,11 @@ async function onPos(lat, lon) {
   const m = r.man[mi],
     nx = r.man[mi + 1],
     dNext = r.cum[m.begin_shape_index] - pr.along;
+  // Zwischenhalt passiert: bei einer Neuberechnung nicht wieder dorthin zurückschicken
+  if (S.via) {
+    const vi = r.man.findIndex(x => x.via);
+    if (vi >= 0 && mi > vi) S.via = null;
+  }
   NV.zT = dNext < 180 ? 17.6 : kmh > 35 ? 16.7 : 17.1;
   const sigAt = r.sig ? r.sig.find(i => r.cum[i] > pr.along + 3) : null,
     sigD = sigAt != null ? r.cum[sigAt] - pr.along : null;
@@ -4611,12 +4664,15 @@ map.on('load', () => {
   const lp = LS.get('lastPlace', null);
   if (lp && Date.now() - lp.t < 7200000 && !S.dest) place(lp.p, false);
 });
-window.navi45 = { S, CFG, forbiddenLayer, map };
+window.navi45 = { S, CFG, forbiddenLayer, map }; // für Tests und Fehlersuche
 if ('speechSynthesis' in window) speechSynthesis.getVoices();
 try {
-  navigator.permissions?.query({ name: 'geolocation' }).then(p => {
-    if (p.state === 'granted') startWatch();
-  });
+  navigator.permissions
+    ?.query({ name: 'geolocation' })
+    .then(p => {
+      if (p.state === 'granted') startWatch();
+    })
+    .catch(() => {});
 } catch (e) {}
 if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 

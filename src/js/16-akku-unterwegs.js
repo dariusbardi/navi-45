@@ -177,11 +177,11 @@ function askCharge(b, rangeLeft, need) {
   };
 }
 async function chargeNow() {
-  if (!S.me) return;
+  if (!(S.navPos || S.me)) return;
   S.chargeBusy = true;
   $('nText').textContent = 'Suche Ladestation …';
   try {
-    const me = S.me;
+    const me = S.navPos || S.me;
     let got = await scoutAt(me.lat, me.lon, ['charging_station']);
     got.forEach(g => (g.air = hav([me.lat, me.lon], [g.lat, g.lon])));
     got.sort((a, b) => a.air - b.air);
@@ -203,6 +203,7 @@ async function chargeNow() {
     S.lastIdx = 0;
     S.said = {};
     NV.a0 = NV.a1 = 0;
+    S.simD = 0;
     say(
       `Neue Route über ${pick.name}, ${fmtDist(pick.air).replace(' m', ' Meter').replace(' km', ' Kilometer')} entfernt.`,
       true

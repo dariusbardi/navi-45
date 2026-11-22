@@ -92,7 +92,8 @@ function navFrame(now) {
   NV.camB = NV.camB == null ? look : lerpAng(NV.camB, look, 1 - Math.exp(-dt / 650));
   const zGoal = Math.max(13, Math.min(19.5, NV.zT + NV.zAdj));
   NV.camZ += (zGoal - NV.camZ) * (1 - Math.exp(-dt / (NV.zFast ? 250 : 900)));
-  S.me = { lat: pos[0], lon: pos[1] };
+  S.navPos = { lat: pos[0], lon: pos[1] }; // angezeigte Fahrzeugposition
+  if (!S.isSim) S.me = S.navPos; // bei der Probefahrt bleibt der echte Standort unverändert
   if (!S.camFree && !NV.userZ)
     map.jumpTo({ center: [pos[1], pos[0]], bearing: NV.camB, pitch: 55, zoom: NV.camZ, padding: navPad() });
   carDraw(pos[0], pos[1], NV.carH);
