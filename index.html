@@ -286,7 +286,9 @@ function setFromMarker(p){mFrom?.remove();mFrom=null;if(p){const d=document.crea
 // ---------- Blatt mit drei Höhen ----------
 const H={peek:()=>Math.min(300,innerHeight*.42),half:()=>innerHeight*.52,full:()=>innerHeight-Math.max(60,(parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sat'))||0)+60)};
 let sheetState='peek';
-function sheetTo(s){sheetState=s;$('sheet').style.setProperty('--h',Math.round(H[s]())+'px');map.setPadding({top:60,bottom:Math.round(Math.min(H[s](),innerHeight*.55)),left:0,right:0})}
+function sheetTo(s){sheetState=s;$('sheet').style.setProperty('--h',Math.round(H[s]())+'px')}
+const pad=(b)=>({top:70,left:20,right:70,bottom:Math.round(Math.min(b??H[sheetState](),innerHeight*.6))+10});
+function fitTo(b,bottom,maxZoom=17){map.setPadding({top:0,bottom:0,left:0,right:0});map.fitBounds(b,{padding:{top:90,bottom:Math.round(bottom)+30,left:40,right:70},maxZoom,duration:800,bearing:0,pitch:0})}
 {let y0=0,h0=0,drag=false;const g=$('grab'),sh=$('sheet');
  g.addEventListener('pointerdown',e=>{drag=true;y0=e.clientY;h0=sh.getBoundingClientRect().height;sh.classList.add('drag');g.setPointerCapture(e.pointerId)});
  g.addEventListener('pointermove',e=>{if(!drag)return;const h=Math.max(120,Math.min(H.full(),h0+(y0-e.clientY)));sh.style.setProperty('--h',h+'px')});
@@ -367,7 +369,7 @@ async function catSearch(cat){
   list.sort((a,b)=>(a.sec??a.air/9)-(b.sec??b.air/9));
   list.forEach((x,i)=>{const el=pinEl(cat,i>4);S.markers.push(addMarker(el,x.lat,x.lon,()=>place(x)))});
   const bounds=new maplibregl.LngLatBounds();list.slice(0,8).forEach(x=>bounds.extend([x.lon,x.lat]));bounds.extend([c.lon,c.lat]);
-  map.fitBounds(bounds,{padding:{top:80,bottom:Math.round(H.half())+20,left:40,right:60},maxZoom:15,duration:800});
+  fitTo(bounds,H.half(),15);
   const dtLine=x=>cat.dt?(x.dt==='yes'?'<span class="tag">Drive-in</span>':''):'';
   body(`<div class="head"><div><h2>${esc(cat.label)}</h2><div class="sub">${list.length} Treffer ${near} · sortiert nach Fahrzeit mit 45 km/h</div></div><button class="x" id="x" aria-label="Schließen">✕</button></div>
   ${cat.dt&&!S.dtOk?'<div class="note">Die Drive-in-Angaben sind gerade nicht abrufbar.</div>':''}
@@ -388,7 +390,7 @@ map.on('click',async e=>{
 });
 function place(p,keepView){
   S.dest=p;S.pending=null;clearRoute();setDestMarker(p);
-  if(!keepView)map.easeTo({center:[p.lon,p.lat],zoom:Math.max(map.getZoom(),15),duration:700});
+  if(!keepView)map.easeTo({center:[p.lon,p.lat],zoom:Math.max(map.getZoom(),15),padding:pad(H.peek()),duration:700});
   const cat=p.cat&&CATS.find(c=>c.id===p.cat);
   const d=S.me?fmtDist(hav([S.me.lat,S.me.lon],[p.lat,p.lon])):'';
   const info=[cat?.label,p.sub].filter(Boolean).join(' · ');
@@ -411,12 +413,12 @@ function place(p,keepView){
 }
 
 const NEAR_OK=/^(shop:(?!vacant$|yes$).+|amenity:(restaurant|fast_food|cafe|bar|pub|biergarten|ice_cream|pharmacy|bank|atm|fuel|cinema|theatre|post_office|library|doctors|dentist|hospital|car_wash|charging_station|marketplace|nightclub|parking))$/;
-const KIND={supermarket:'Supermarkt',bakery:'Bäckerei',restaurant:'Restaurant',fast_food:'Imbiss',cafe:'Café',pharmacy:'Apotheke',bank:'Bank',atm:'Geldautomat',fuel:'Tankstelle',chemist:'Drogerie',kiosk:'Kiosk',hairdresser:'Friseur',clothes:'Kleidung',convenience:'Laden',butcher:'Metzgerei',beverages:'Getränkemarkt',doctors:'Arztpraxis',dentist:'Zahnarzt',hospital:'Krankenhaus',post_office:'Post',bar:'Bar',pub:'Kneipe',ice_cream:'Eisdiele',cinema:'Kino',parking:'Parkplatz',florist:'Blumen',greengrocer:'Obst & Gemüse',optician:'Optiker',car_repair:'Autowerkstatt',car_wash:'Waschanlage',charging_station:'Ladestation',library:'Bücherei'};
+const KIND={supermarket:'Supermarkt',bakery:'Bäckerei',restaurant:'Restaurant',fast_food:'Imbiss',cafe:'Café',pharmacy:'Apotheke',bank:'Bank',atm:'Geldautomat',fuel:'Tankstelle',chemist:'Drogerie',kiosk:'Kiosk',hairdresser:'Friseur',clothes:'Kleidung',convenience:'Laden',butcher:'Metzgerei',beverages:'Getränkemarkt',doctors:'Arztpraxis',dentist:'Zahnarzt',hospital:'Krankenhaus',post_office:'Post',bar:'Bar',pub:'Kneipe',ice_cream:'Eisdiele',cinema:'Kino',parking:'Parkplatz',florist:'Blumen',greengrocer:'Obst & Gemüse',optician:'Optiker',car_repair:'Autowerkstatt',car_wash:'Waschanlage',charging_station:'Ladestation',library:'Bücherei',books:'Bücher',bag:'Taschen',shoes:'Schuhe',jewelry:'Schmuck',electronics:'Elektronik',mobile_phone:'Handyladen',department_store:'Kaufhaus',gift:'Geschenke',sports:'Sport',toys:'Spielzeug',cosmetics:'Kosmetik',perfumery:'Parfümerie',furniture:'Möbel',hardware:'Baumarkt',doityourself:'Baumarkt',pet:'Tierbedarf',tobacco:'Tabak',alcohol:'Spirituosen',wine:'Wein',confectionery:'Süßwaren',deli:'Feinkost',pastry:'Konditorei',stationery:'Schreibwaren',variety_store:'Kaufhaus',computer:'Computer',bicycle:'Fahrräder',car:'Autohaus',laundry:'Wäscherei',travel_agency:'Reisebüro',beauty:'Kosmetikstudio',tattoo:'Tattoo',photo:'Foto',copyshop:'Copyshop',music:'Musik',art:'Kunst',outdoor:'Outdoor',tea:'Tee',coffee:'Kaffee',chocolate:'Schokolade',organic:'Bioladen',health_food:'Reformhaus',newsagent:'Zeitschriften',lottery:'Lotto',bookmaker:'Wettbüro'};
 async function nearby(p){
   try{const j=await (await fetch(`${PHOTON}/reverse?lat=${p.lat}&lon=${p.lon}&limit=50&radius=0.45&lang=de&osm_tag=shop&osm_tag=amenity`,{signal:withTimeout(10000)})).json();
     if(S.dest!==p||!$('near'))return;const seen=new Set();
     const it=j.features.filter(f=>f.properties.name&&NEAR_OK.test(f.properties.osm_key+':'+f.properties.osm_value)).map(f=>{const q=f.properties,lat=f.geometry.coordinates[1],lon=f.geometry.coordinates[0];
-      return{name:q.name,sub:[KIND[q.osm_value]||q.osm_value.replace(/_/g,' '),[q.street,q.housenumber].filter(Boolean).join(' ')].filter(Boolean).join(' · '),lat,lon,d:hav([p.lat,p.lon],[lat,lon])}})
+      return{name:q.name,sub:[KIND[q.osm_value]||'Geschäft',[q.street,q.housenumber].filter(Boolean).join(' ')].filter(Boolean).join(' · '),lat,lon,d:hav([p.lat,p.lon],[lat,lon])}})
       .filter(x=>x.d>3&&!seen.has(x.name)&&seen.add(x.name)).sort((a,b)=>a.d-b.d).slice(0,15);
     if(!it.length)return;
     $('near').innerHTML=`<div class="sec">In der Nähe</div><div class="group"><ul class="list">${it.map((x,i)=>`<li data-n="${i}"><span class="ic" style="background:#ff9500;color:#fff">${IC.bag.replace('<svg','<svg width="17" height="17"')}</span><span class="tx"><b>${esc(x.name)}</b><small>${esc(x.sub)}</small></span><span class="rt">${fmtDist(x.d)}</span></li>`).join('')}</ul></div>`;
@@ -442,8 +444,8 @@ $('btnLoc').onclick=()=>{
   unlockSpeech();startWatch();
   if(!S.me){S.follow=1;setLocIcon();return}
   S.follow=S.follow===0?1:S.follow===1?2:0;setLocIcon();
-  if(S.follow===1)map.easeTo({center:[S.me.lon,S.me.lat],zoom:Math.max(map.getZoom(),15.5),bearing:0,duration:700});
-  if(S.follow===2)map.easeTo({center:[S.me.lon,S.me.lat],zoom:Math.max(map.getZoom(),16),bearing:S.heading||0,pitch:45,duration:700});
+  if(S.follow===1)map.easeTo({center:[S.me.lon,S.me.lat],zoom:Math.max(map.getZoom(),15.5),bearing:0,padding:pad(),duration:700});
+  if(S.follow===2)map.easeTo({center:[S.me.lon,S.me.lat],zoom:Math.max(map.getZoom(),16),bearing:S.heading||0,pitch:45,padding:pad(),duration:700});
 };
 function drawMe(lat,lon,bearing){
   S.me={lat,lon};
@@ -456,7 +458,7 @@ function drawMe(lat,lon,bearing){
   else if(meEl.classList.contains('nav')){meEl.className='puck';meEl.innerHTML='<div class="arr"></div><div class="d"></div>'}
   meEl.classList.toggle('dir',hd!=null&&!S.navi);
   if(hd!=null)mMe.setRotation(hd);
-  if(!S.navi&&S.follow)map.easeTo({center:[lon,lat],bearing:S.follow===2&&hd!=null?hd:map.getBearing(),duration:900,easing:t=>t});
+  if(!S.navi&&S.follow)map.easeTo({center:[lon,lat],bearing:S.follow===2&&hd!=null?hd:map.getBearing(),padding:pad(),duration:900,easing:t=>t});
 }
 
 // ---------- Route ----------
@@ -503,7 +505,7 @@ function drawRoutes(fit){
   const r=route();if(!r)return;
   const others=S.routes.filter((_,i)=>i!==S.sel).map(x=>x.coords);
   setGeo('alt',others.length?others:null);setGeo('route',r.coords);setGeo('done',null);
-  if(fit){const b=new maplibregl.LngLatBounds();S.routes.forEach(x=>x.coords.forEach(p=>b.extend([p[1],p[0]])));map.fitBounds(b,{padding:{top:90,bottom:Math.round(H.half())+30,left:40,right:70},duration:800,bearing:0,pitch:0})}
+  if(fit){const b=new maplibregl.LngLatBounds();S.routes.forEach(x=>x.coords.forEach(p=>b.extend([p[1],p[0]])));fitTo(b,H.half())}
 }
 map.on('click','alt-line',e=>{if(S.navi||S.routes.length<2)return;S.clickGuard=Date.now();
   const pt=[e.lngLat.lat,e.lngLat.lng];let best=0,bd=1e12;S.routes.forEach((r,i)=>{if(i===S.sel)return;for(let k=0;k<r.coords.length;k+=3){const d=hav(pt,r.coords[k]);if(d<bd){bd=d;best=i}}});S.sel=best;drawRoutes(false);preview()});
@@ -599,7 +601,7 @@ document.addEventListener('visibilitychange',keepAwake);
 function startNavi(sim){
   if(!route())return;unlockSpeech();
   document.body.classList.add('navi');document.body.classList.remove('free');
-  S.navi=true;S.lastIdx=0;S.off=0;S.said={};S.isSim=sim;S.camFree=false;keepAwake();drawFavs();showSign(0);loadAttrs(route());map.setPadding({top:Math.round(innerHeight*.35),bottom:100,left:0,right:0});
+  S.navi=true;S.lastIdx=0;S.off=0;S.said={};S.isSim=sim;S.camFree=false;keepAwake();drawFavs();showSign(0);loadAttrs(route());
   setGeo('alt',null);
   const first=route().man[0];
   say((sim?'Probefahrt. ':'')+(first?.verbal_pre_transition_instruction||first?.instruction||'Los geht’s.'));
@@ -637,7 +639,7 @@ async function onPos(lat,lon){
   $('nSpd').classList.toggle('over',kmh!=null&&kmh>Math.min(lim||45,45)+3);
   const ahead=pointAt(Math.min(total-0.5,pr.along+25))||[lat,lon],hd=brg(pr.pt,ahead);
   drawMe(pr.pt[0],pr.pt[1],hd);
-  if(!S.camFree)map.easeTo({center:[pr.pt[1],pr.pt[0]],bearing:hd,pitch:55,zoom:kmh>35?16.6:17.2,duration:1000,easing:t=>t});
+  if(!S.camFree)map.easeTo({center:[pr.pt[1],pr.pt[0]],bearing:hd,pitch:55,zoom:kmh>35?16.6:17.2,padding:{top:Math.round(innerHeight*.42),bottom:110,left:0,right:0},duration:1000,easing:t=>t});
   setGeo('done',r.coords.slice(0,pr.idx+1).concat([pr.pt]));setGeo('route',[pr.pt].concat(r.coords.slice(pr.idx+1)));
   if(left<25){$('nDist').textContent='Angekommen';$('nText').textContent=S.dest.name;$('nIcon').innerHTML=arrow(4);$('nThen').hidden=true;
     const dm=r.man[r.man.length-1];say(dm?.verbal_pre_transition_instruction||'Sie haben Ihr Ziel erreicht.');clearInterval(S.sim);S.navi=false;setTimeout(()=>{S.navi=true;stopNavi()},6000);return}
