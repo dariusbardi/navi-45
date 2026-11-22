@@ -1,0 +1,32 @@
+</head>
+<body>
+<div id="map"></div>
+<div id="limit" class="glass" aria-label="Ihr Fahrzeug fährt höchstens 45 km/h">Ihr Max <b>45</b></div>
+<div id="roadSign" hidden aria-label="Erlaubte Geschwindigkeit auf dieser Straße"></div>
+<div id="tacho" class="glass" hidden aria-label="Ihre Geschwindigkeit"><b id="tachoV">0</b><small>km/h</small></div>
+<div id="ctrl" class="glass">
+  <button id="btnLoc" aria-label="Meinen Standort zeigen"><svg id="locIc" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 3 3 10.5l7.5 3 3 7.5z"/></svg></button>
+  <button id="btn3d" aria-label="2D oder Vogelperspektive" style="font-weight:700;font-size:15px">3D</button>
+  <button id="btnType" aria-label="Kartentyp: Standard oder Satellit"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5z"/><path d="m2 13 10 5 10-5"/></svg></button>
+  <button id="btnSet" aria-label="Einstellungen"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+</div>
+<button id="compass" class="glass" aria-label="Karte nach Norden ausrichten"><svg id="compIc" width="22" height="22" viewBox="0 0 24 24"><path d="M12 2l4 10h-8z" fill="#ff3b30"/><path d="M12 22l-4-10h8z" fill="#8e8e93"/></svg></button>
+
+<div id="warn" hidden role="alert"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 2 21h20z"/><path d="M12 10v5M12 18v.5" stroke-linecap="round"/></svg><div>Verbotene Straße!<small id="warnTxt">Autobahn oder Kraftfahrstraße – mit dem AM-Führerschein nicht erlaubt. Bitte bei der nächsten Möglichkeit abfahren.</small></div></div>
+<div id="sheet" class="glass"><div class="grabzone" id="grab"><div class="grab"></div></div><div id="body"></div></div>
+
+<div id="nav"><div class="sign"><svg id="nIcon" viewBox="0 0 64 64" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></svg><div><div id="nDist">–</div><div id="nText">Route wird gestartet …</div><div id="nSig" hidden></div></div></div><div id="nThen" hidden></div></div>
+<div id="chargeAsk" class="glass" hidden role="alertdialog" aria-label="Akku wird knapp"><div style="display:flex;gap:12px;align-items:center"><span class="ic" style="background:#30b0c7;color:#fff;width:40px;height:40px"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg></span><div style="flex:1"><b id="caT">Akku wird knapp</b><div class="sub" id="caS"></div></div></div><button class="btn go" id="caYes" style="margin-top:10px;height:46px">Laden – Ladestation anfahren</button><div class="cabar"><i id="caBar"></i></div></div>
+<button id="recenter" class="glass">Zentrieren</button>
+<div id="navZoom" class="glass"><button id="zIn" aria-label="Näher heran">+</button><button id="zOut" aria-label="Weiter weg">−</button></div>
+<button id="navMute" class="glass" aria-label="Ansagen an oder aus"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/><path class="mx" d="M17 9l5 6M22 9l-5 6" style="display:none"/></svg></button>
+<div id="navBar" class="glass"><div class="nb">
+  <div class="spd" id="nSpd">–<small>km/h</small></div>
+  <div class="st"><b id="nEta">–</b><span>Ankunft</span></div>
+  <div class="st"><b id="nMin">–</b><span>Min.</span></div>
+  <div class="st"><b id="nKm">–</b><span>km</span></div>
+  <div class="st" id="nBatBox" hidden><b id="nBat">–</b><span>Akku</span></div>
+  <button class="end" id="btnStop">Beenden</button>
+</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.js"></script>
