@@ -539,8 +539,11 @@ async function getLong(a,b){
   const D=hav([a.lat,a.lon],[b.lat,b.lon]),n=Math.ceil(D/110000),pts=[];for(let i=0;i<=n;i++){const t=i/n;pts.push({lat:a.lat+(b.lat-a.lat)*t,lon:a.lon+(b.lon-a.lon)*t})}
   let coords=[],man=[],km=0,sec=0,fallback=false;
   for(let i=0;i<n;i++){
-    const ask=async up=>(await fetch(`${VALHALLA}/route?json=${encodeURIComponent(JSON.stringify({locations:[pts[i],pts[i+1]],costing:COST(),costing_options:costOpts(up),directions_options:{units:'kilometers',language:'de-DE'}}))}`,{signal:withTimeout(30000)})).json();
-    let j=await ask(CFG.noUnpaved);if(!j.trip&&CFG.noUnpaved){j=await ask(false);fallback=true}
+    const loc=(p,k)=>Object.assign({lat:p.lat,lon:p.lon},k>0&&k<n?{radius:3000,minimum_reachability:400}:{});
+    const ask=async up=>(await fetch(`${VALHALLA}/route?json=${encodeURIComponent(JSON.stringify({locations:[loc(pts[i],i),loc(pts[i+1],i+1)],costing:COST(),costing_options:costOpts(up),directions_options:{units:'kilometers',language:'de-DE'}}))}`,{signal:withTimeout(30000)})).json();
+    let j=await ask(CFG.noUnpaved);if(!j.trip&&CFG.noUnpaved){j=await ask(false);if(j.trip)fallback=true}
+    // Zwischenpunkt liegt ungünstig (Wald, See, Privatweg): etwas verschieben und neu versuchen
+    for(const dy of [0.06,-0.06,0.12,-0.12]){if(j.trip||i===n-1)break;const keep=pts[i+1];pts[i+1]={lat:keep.lat+dy,lon:keep.lon};j=await ask(false);if(!j.trip)pts[i+1]=keep}
     if(!j.trip)throw new Error(j.error||'Etappe '+(i+1)+' nicht gefunden');
     const leg=j.trip.legs[0];let c=decode6(leg.shape);const off=coords.length?coords.length-1:0;if(coords.length)c=c.slice(1);
     // Anschluss: Etappen-Endpunkte liegen auf derselben Straße, Lücke wird überbrückt
