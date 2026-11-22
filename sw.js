@@ -1,6 +1,6 @@
 // Navi 45 – Service Worker: App startet schnell und auch bei schlechtem Netz.
 // Routen, Suche und Restaurants brauchen weiterhin Internet.
-const VERSION = 'navi45-v4';
+const VERSION = 'navi45-v5';
 const SHELL = [
   './',
   './index.html',
@@ -37,7 +37,7 @@ self.addEventListener('fetch', e => {
 
   // Seite selbst: erst Netz (immer neueste Version), sonst gespeicherte
   if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).then(r => {
+    e.respondWith(fetch(new Request(req.url, { cache: 'no-cache' })).then(r => {
       const copy = r.clone(); caches.open(VERSION).then(c => c.put('./index.html', copy)); return r;
     }).catch(() => caches.match('./index.html')));
     return;
