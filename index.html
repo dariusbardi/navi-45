@@ -242,6 +242,17 @@ function label(f){const p=f.properties||{};const street=[p.street,p.housenumber]
 const center=()=>{const c=map.getCenter();return{lat:c.lat,lon:c.lng}};
 const origin=()=>S.me||center();
 
+// ---------- Adresssuche: Photon, bei Ausfall Nominatim ----------
+let nomLast=0;const nomWait=async()=>{const w=nomLast+1100-Date.now();nomLast=Math.max(Date.now(),nomLast+1100);if(w>0)await new Promise(r=>setTimeout(r,w))};
+const nomFeat=x=>{const a=x.address||{};const street=a.road||a.pedestrian||a.footway||'';return{geometry:{coordinates:[+x.lon,+x.lat]},properties:{name:x.name&&x.name!==street?x.name:'',street,housenumber:a.house_number,postcode:a.postcode,city:a.city||a.town||a.village,district:a.suburb,osm_key:x.category,osm_value:x.type,osm_type:(x.osm_type||'n')[0].toUpperCase(),osm_id:x.osm_id}}};
+async function geo(q,c,limit=8){
+  try{const j=await (await fetch(`${PHOTON}/api/?q=${encodeURIComponent(q)}&lang=de&limit=${limit}&lat=${c.lat}&lon=${c.lon}&location_bias_scale=0.3`,{signal:withTimeout(6000)})).json();if(j.features)return j.features}catch(e){}
+  await nomWait();const vb=[c.lon-0.6,c.lat+0.4,c.lon+0.6,c.lat-0.4].map(n=>n.toFixed(3)).join(',');
+  const j=await (await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&accept-language=de&limit=${limit}&viewbox=${vb}&q=${encodeURIComponent(q)}`,{signal:withTimeout(10000)})).json();return j.map(nomFeat)}
+async function rgeo(lat,lon){
+  try{const j=await (await fetch(`${PHOTON}/reverse?lat=${lat}&lon=${lon}&lang=de`,{signal:withTimeout(5000)})).json();if(j.features?.length)return j.features[0]}catch(e){}
+  await nomWait();const x=await (await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&accept-language=de&zoom=18&lat=${lat}&lon=${lon}`,{signal:withTimeout(10000)})).json();return x&&x.lat?nomFeat(x):null}
+
 // ---------- Kategorien ----------
 const IC={
  fuel:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h12M4 10h10M14 8l3 3v6a1.5 1.5 0 0 0 3 0V9l-3-3"/></svg>',
@@ -261,21 +272,21 @@ const IC={
 };
 const CATS=[
  {id:'charge',label:'Laden',bg:'#30b0c7',fg:'#fff',svg:'bolt',tag:'amenity:charging_station',q:['Ladestation','Ladesäule','Ladepunkt','SWM','EnBW','Allego','E.ON','Stadtwerke','Aldi','Lidl','Kaufland'],scout:['charging_station']},
- {id:'mc',label:"McDonald's",bg:'#ffbc0d',fg:'#da291c',glyph:'M',tag:'amenity:fast_food',q:["McDonald's"],match:/mc ?donald/i,dt:true},
- {id:'bk',label:'Burger King',bg:'#d62300',fg:'#ffe5b4',glyph:'BK',tag:'amenity:fast_food',q:['Burger King'],match:/burger king/i,dt:true},
- {id:'kfc',label:'KFC',bg:'#a3080c',fg:'#fff',glyph:'KFC',tag:'amenity:fast_food',q:['KFC'],match:/kfc|kentucky/i,dt:true},
- {id:'subway',label:'Subway',bg:'#008c15',fg:'#ffc600',glyph:'S',tag:'amenity:fast_food',q:['Subway'],match:/subway/i},
- {id:'doener',label:'Döner',bg:'#b03a2e',fg:'#fff',svg:'fork',tag:'amenity',q:['Döner','Kebab','Kebap']},
- {id:'pizza',label:'Pizza',bg:'#e74c3c',fg:'#fff',svg:'pizza',tag:'amenity',q:['Pizza','Pizzeria']},
- {id:'rest',label:'Restaurant',bg:'#ff6b35',fg:'#fff',svg:'fork',tag:'amenity:restaurant',q:['Restaurant','Gasthof','Gasthaus','Wirtshaus','Ristorante','Trattoria','Brauhaus','Bistro','Biergarten']},
- {id:'fuel',label:'Tankstelle',bg:'#34c759',fg:'#fff',svg:'fuel',tag:'amenity:fuel',q:['Aral','Shell','Esso','JET','TotalEnergies','Agip','OMV','BayWa','Avia','Tankstelle']},
- {id:'super',label:'Supermarkt',bg:'#ff9500',fg:'#fff',svg:'cart',tag:'shop:supermarket',q:['Edeka','Rewe','Aldi','Lidl','Netto','Penny','Kaufland','Norma','Supermarkt']},
- {id:'baker',label:'Bäckerei',bg:'#a2845e',fg:'#fff',svg:'bread',tag:'shop:bakery',q:['Bäckerei','Bäcker','Backhaus','Backstube','Café']},
- {id:'cafe',label:'Café',bg:'#8e5a2b',fg:'#fff',svg:'cup',tag:'amenity:cafe',q:['Café','Cafe','Starbucks','Coffee']},
- {id:'drug',label:'Drogerie',bg:'#5856d6',fg:'#fff',svg:'drop',tag:'shop:chemist',q:['dm','Rossmann','Müller','Drogerie']},
- {id:'pharm',label:'Apotheke',bg:'#e30613',fg:'#fff',svg:'plus',tag:'amenity:pharmacy',q:['Apotheke']},
- {id:'bank',label:'Bank',bg:'#0a84ff',fg:'#fff',svg:'euro',tag:'amenity:bank',q:['Sparkasse','Volksbank','Raiffeisenbank','Deutsche Bank','Commerzbank','HypoVereinsbank','Postbank','Sparda','Bank']},
- {id:'cinema',label:'Kino',bg:'#1c1c1e',fg:'#fff',svg:'film',tag:'amenity:cinema',q:['Kino','Cinema','Cineplex','Kinopolis','Mathäser']}
+ {id:'mc',subs:['fast_food','restaurant'],label:"McDonald's",bg:'#ffbc0d',fg:'#da291c',glyph:'M',tag:'amenity:fast_food',q:["McDonald's"],match:/mc ?donald/i,dt:true},
+ {id:'bk',subs:['fast_food','restaurant'],label:'Burger King',bg:'#d62300',fg:'#ffe5b4',glyph:'BK',tag:'amenity:fast_food',q:['Burger King'],match:/burger king/i,dt:true},
+ {id:'kfc',subs:['fast_food','restaurant'],label:'KFC',bg:'#a3080c',fg:'#fff',glyph:'KFC',tag:'amenity:fast_food',q:['KFC'],match:/kfc|kentucky/i,dt:true},
+ {id:'subway',subs:['fast_food','restaurant'],label:'Subway',bg:'#008c15',fg:'#ffc600',glyph:'S',tag:'amenity:fast_food',q:['Subway'],match:/subway/i},
+ {id:'doener',subs:['fast_food','restaurant'],label:'Döner',bg:'#b03a2e',fg:'#fff',svg:'fork',tag:'amenity',q:['Döner','Kebab','Kebap'],match:/d[öo]ner|kebab|kebap/i},
+ {id:'pizza',subs:['fast_food','restaurant'],label:'Pizza',bg:'#e74c3c',fg:'#fff',svg:'pizza',tag:'amenity',q:['Pizza','Pizzeria'],match:/pizz/i},
+ {id:'rest',subs:['restaurant','biergarten'],label:'Restaurant',bg:'#ff6b35',fg:'#fff',svg:'fork',tag:'amenity:restaurant',q:['Restaurant','Gasthof','Gasthaus','Wirtshaus','Ristorante','Trattoria','Brauhaus','Bistro','Biergarten']},
+ {id:'fuel',subs:['fuel'],label:'Tankstelle',bg:'#34c759',fg:'#fff',svg:'fuel',tag:'amenity:fuel',q:['Aral','Shell','Esso','JET','TotalEnergies','Agip','OMV','BayWa','Avia','Tankstelle']},
+ {id:'super',subs:['supermarket'],label:'Supermarkt',bg:'#ff9500',fg:'#fff',svg:'cart',tag:'shop:supermarket',q:['Edeka','Rewe','Aldi','Lidl','Netto','Penny','Kaufland','Norma','Supermarkt']},
+ {id:'baker',subs:['bakery'],label:'Bäckerei',bg:'#a2845e',fg:'#fff',svg:'bread',tag:'shop:bakery',q:['Bäckerei','Bäcker','Backhaus','Backstube','Café']},
+ {id:'cafe',subs:['cafe'],label:'Café',bg:'#8e5a2b',fg:'#fff',svg:'cup',tag:'amenity:cafe',q:['Café','Cafe','Starbucks','Coffee']},
+ {id:'drug',subs:['chemist'],label:'Drogerie',bg:'#5856d6',fg:'#fff',svg:'drop',tag:'shop:chemist',q:['dm','Rossmann','Müller','Drogerie']},
+ {id:'pharm',subs:['pharmacy'],label:'Apotheke',bg:'#e30613',fg:'#fff',svg:'plus',tag:'amenity:pharmacy',q:['Apotheke']},
+ {id:'bank',subs:['bank'],label:'Bank',bg:'#0a84ff',fg:'#fff',svg:'euro',tag:'amenity:bank',q:['Sparkasse','Volksbank','Raiffeisenbank','Deutsche Bank','Commerzbank','HypoVereinsbank','Postbank','Sparda','Bank']},
+ {id:'cinema',subs:['cinema'],label:'Kino',bg:'#1c1c1e',fg:'#fff',svg:'film',tag:'amenity:cinema',q:['Kino','Cinema','Cineplex','Kinopolis','Mathäser']}
 ];
 const catIcon=(c,cls='')=>`<i class="${cls}" style="background:${c.bg};color:${c.fg}">${c.glyph||IC[c.svg]}</i>`;
 const glyphOf=c=>c?(c.glyph||IC[c.svg]):IC.pin;
@@ -435,7 +446,7 @@ function home(state){
 async function search(q){
   const res=$('res');if(!res)return;if(q.length<2){res.innerHTML='';return}
   const c=origin();
-  try{const j=await (await fetch(`${PHOTON}/api/?q=${encodeURIComponent(q)}&lang=de&limit=10&lat=${c.lat}&lon=${c.lon}&location_bias_scale=0.3`,{signal:withTimeout(10000)})).json();
+  try{const j={features:await geo(q,c,10)};
     if(!$('res')||$('q')?.value.trim()!==q)return;
     const items=j.features.map(f=>{const l=label(f);const lat=f.geometry.coordinates[1],lon=f.geometry.coordinates[0];const pk=f.properties.osm_key;return{name:l.main,sub:l.sub,lat,lon,d:hav([c.lat,c.lon],[lat,lon]),shop:pk==='shop'||pk==='amenity'}});
     res.innerHTML=items.length?`<div class="group" style="margin-top:14px"><ul class="list">${items.map((r,i)=>`<li data-i="${i}"><span class="ic"${r.shop?' style="background:#ff9500;color:#fff"':''}>${r.shop?IC.bag.replace('<svg','<svg width="17" height="17"'):''}<svg${r.shop?' hidden':''} width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg></span><span class="tx"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span><span class="rt">${fmtDist(r.d)}</span></li>`).join('')}</ul></div>`:'<div class="sub" style="margin-top:14px">Nichts gefunden.</div>';
@@ -474,14 +485,15 @@ async function catSearch(cat){
   clearMarkers();setDestMarker(null);clearRoute();
   const dLat=0.25,dLon=0.36,bbox=[c.lon-dLon,c.lat-dLat,c.lon+dLon,c.lat+dLat].map(n=>n.toFixed(4)).join(',');
   const seen=new Set();let list=[];
-  await Promise.all(cat.q.map(async q=>{try{const j=await (await fetch(`${PHOTON}/api/?q=${encodeURIComponent(q)}&osm_tag=${cat.tag}&bbox=${bbox}&limit=40&lang=de`,{signal:withTimeout(12000)})).json();
+  await Promise.all(cat.q.map(async q=>{try{const j=await (await fetch(`${PHOTON}/api/?q=${encodeURIComponent(q)}&osm_tag=${cat.tag}&bbox=${bbox}&limit=40&lang=de`,{signal:withTimeout(7000)})).json();
     for(const f of j.features){const p=f.properties,id=p.osm_type+p.osm_id;if(seen.has(id))continue;if(cat.match&&!cat.match.test(p.name||''))continue;seen.add(id);
       const lat=f.geometry.coordinates[1],lon=f.geometry.coordinates[0];
       list.push({id,cat:cat.id,name:p.name||cat.label,sub:[[p.street,p.housenumber].filter(Boolean).join(' '),p.city||p.town||p.village].filter(Boolean).join(', '),lat,lon,air:hav([c.lat,c.lon],[lat,lon])})}}catch(e){}}));
-  if(cat.scout){try{const got=await scoutAt(c.lat,c.lon,cat.scout);for(const g of got){if(list.some(x=>hav([x.lat,x.lon],[g.lat,g.lon])<25))continue;list.push({id:g.id,cat:cat.id,name:g.name||cat.label,sub:'',lat:g.lat,lon:g.lon,air:hav([c.lat,c.lon],[g.lat,g.lon])})}}catch(e){}
+  const SUBS=cat.scout||cat.subs;if(SUBS){try{const got=(await scoutAt(c.lat,c.lon,SUBS)).filter(g=>!cat.match||cat.match.test(g.name));for(const g of got){if(list.some(x=>hav([x.lat,x.lon],[g.lat,g.lon])<25))continue;list.push({id:g.id,cat:cat.id,name:g.name||cat.label,sub:'',lat:g.lat,lon:g.lon,air:hav([c.lat,c.lon],[g.lat,g.lon])})}}catch(e){}
     list.forEach(x=>{if(typeof x.id==='string')x.id=osmNum(x.id[0],+x.id.slice(1))});}
   if(!$('x'))return;
   list=list.filter(x=>x.air<30000).sort((a,b)=>a.air-b.air).slice(0,cat.scout?40:30);
+  list.forEach(x=>{x.name=(x.name||'').replace(/\b[A-Z]{2}\*?[A-Z0-9]{3}\*?[A-Z0-9]{3,}\b[;,\s]*/g,'').trim()||cat.label});
   if(cat.id==='charge'){await loadSockets(list);if(isEV())list.sort((a,b)=>({ok:0,unknown:1,no:2}[sockFit(a.sock)]-{ok:0,unknown:1,no:2}[sockFit(b.sock)])||a.air-b.air);list=list.slice(0,30)}
   if(!list.length){body(`<div class="head"><div><h2>${esc(cat.label)}</h2><div class="sub">Nichts gefunden ${near}.</div></div><button class="x" id="x">✕</button></div>`,'peek');$('x').onclick=()=>home();return}
   // Fahrzeiten mit 45 km/h für alle auf einmal
@@ -497,7 +509,7 @@ async function catSearch(cat){
   const bounds=new maplibregl.LngLatBounds();list.slice(0,8).forEach(x=>bounds.extend([x.lon,x.lat]));bounds.extend([c.lon,c.lat]);
   fitTo(bounds,H.half(),15);
   const dtLine=x=>cat.dt?(x.dt==='yes'?'<span class="tag">Drive-in</span>':''):'';
-  body(`<div class="head"><div><h2>${esc(cat.label)}</h2><div class="sub">${list.length} Treffer ${near} · sortiert nach Fahrzeit ${vehTxt()}</div></div><button class="x" id="x" aria-label="Schließen">✕</button></div>
+  body(`<div class="head"><div><h2>${esc(cat.label)}</h2><div class="sub">${list.length} Treffer ${near} · ${cat.id==='charge'&&isEV()?'passende zuerst':'sortiert nach Fahrzeit '+vehTxt()}</div></div><button class="x" id="x" aria-label="Schließen">✕</button></div>
   ${cat.dt&&!S.dtOk?'<div class="note">Die Drive-in-Angaben sind gerade nicht abrufbar.</div>':''}
   ${cat.id==='charge'&&isEV()?`<div class="note" style="background:var(--card)">Für Ihren Rocks-e passen Schuko-Steckdosen und Typ-2-Steckdosen (mit Adapter)${CFG.plug==='type2'?' sowie Typ-2-Säulen mit festem Kabel':''}. Passende stehen oben.</div>`:''}
   <div class="group" style="margin-top:12px"><ul class="list">${list.map((x,i)=>`<li data-i="${i}">${catIcon(cat,'ic')}<span class="tx"><b>${esc(x.name)}</b>${dtLine(x)}<small>${esc(x.sub||'')}</small>${cat.id==='charge'?`<div>${sockBadges(x.sock)}</div>`:''}</span><span class="rt">${x.sec!=null?`<b>${fmtTime(x.sec)}</b>${comma(x.km.toFixed(1))} km`:fmtDist(x.air)}</span></li>`).join('')}</ul></div>`);
@@ -513,7 +525,7 @@ map.on('click',async e=>{
   const poi=map.queryRenderedFeatures(e.point).find(f=>/^poi/.test(f.layer.id)&&f.properties.name);
   if(poi){const g=poi.geometry.coordinates;place({name:poi.properties['name:de']||poi.properties.name,sub:(poi.properties.class||'').replace(/_/g,' '),lat:g[1],lon:g[0]},true);return}
   const p={name:'Markierter Ort',sub:'',lat,lon};place(p,true);
-  try{const j=await (await fetch(`${PHOTON}/reverse?lat=${lat}&lon=${lon}&lang=de`,{signal:withTimeout(8000)})).json();if(j.features[0]&&S.dest===p){const l=label(j.features[0]);p.name=l.main;p.sub=l.sub;place(p,true)}}catch(e){}
+  try{const f=await rgeo(lat,lon);if(f&&S.dest===p){const l=label(f);p.name=l.main;p.sub=l.sub;place(p,true)}}catch(e){}
 });
 function place(p,keepView){
   if(S.dest!==p&&!S.pickVia)S.via=null;S.dest=p;S.pending=null;clearRoute();setDestMarker(p);
@@ -708,7 +720,7 @@ function fromUI(p,denied){
   <div class="from"><span class="dot"></span><input id="fq" placeholder="Startadresse eintippen" autocomplete="off"></div><div id="fr"></div>`,'half');
   $('x').onclick=()=>{S.pending=null;place(p,true)};
   const fq=$('fq');let t;fq.onfocus=()=>sheetTo('full');
-  fq.oninput=()=>{clearTimeout(t);t=setTimeout(async()=>{try{const c=center();const j=await (await fetch(`${PHOTON}/api/?q=${encodeURIComponent(fq.value)}&lang=de&limit=6&lat=${c.lat}&lon=${c.lon}`)).json();
+  fq.oninput=()=>{clearTimeout(t);t=setTimeout(async()=>{try{const c=center();const j={features:await geo(fq.value,c,6)};
     const it=j.features.map(f=>{const l=label(f);return{name:l.main,sub:l.sub,lat:f.geometry.coordinates[1],lon:f.geometry.coordinates[0]}});
     $('fr').innerHTML=`<div class="group" style="margin-top:12px"><ul class="list">${it.map((r,i)=>`<li data-i="${i}"><span class="ic"><span class="dotm" style="width:14px;height:14px;border-width:3px"></span></span><span class="tx"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span></li>`).join('')}</ul></div>`;
     $('fr').querySelectorAll('[data-i]').forEach(li=>li.onclick=()=>{fq.blur();S.from=it[+li.dataset.i];routeTo(p)})}catch(e){}},300)};
