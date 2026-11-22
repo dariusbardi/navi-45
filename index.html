@@ -35,15 +35,37 @@
   --nav2: #145233;
   --shadow: 0 6px 30px rgba(0, 0, 0, 0.16);
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ink: #f5f5f7;
-    --mut: #98989f;
-    --line: rgba(84, 84, 88, 0.6);
-    --fill: rgba(118, 118, 128, 0.24);
-    --sheet: rgba(30, 30, 32, 0.94);
-    --card: #2c2c2e;
-  }
+:root[data-ui='dark'] {
+  color-scheme: dark;
+  --ink: #f5f5f7;
+  --mut: #98989f;
+  --line: rgba(84, 84, 88, 0.6);
+  --fill: rgba(118, 118, 128, 0.24);
+  --sheet: rgba(30, 30, 32, 0.94);
+  --card: #2c2c2e;
+}
+/* Kartenbild: sanftes Abdunkeln in der Dämmerung, weicher Übergang beim Wechsel auf die Nachtkarte */
+#map canvas {
+  transition: filter 6s linear;
+}
+#map {
+  transition: opacity 0.45s ease;
+}
+.swatches {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.6);
+}
+.swatch.on {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
 }
 * {
   box-sizing: border-box;
@@ -1289,6 +1311,8 @@ const CFG = Object.assign(
     quiet: false,
     noUnpaved: true,
     theme: 'auto',
+    routeColor: 'blue',
+    accent: 'blue',
     mapType: 'std',
     hint: true,
     vehicle: 'am',
@@ -1732,8 +1756,45 @@ const STYLE = {
   }
 };
 const darkQ = matchMedia('(prefers-color-scheme: dark)');
-const wantStyle = () =>
-  CFG.mapType === 'sat' ? 'sat' : CFG.theme === 'dark' || (CFG.theme === 'auto' && darkQ.matches) ? 'dark' : 'light';
+
+// Sonnenhöhe über dem Horizont in Grad (vereinfachte Sonnenbahn, auf etwa 1° genau)
+function sunAlt(lat, lon, date = new Date()) {
+  const d = (date.getTime() - Date.UTC(2000, 0, 1, 12)) / 864e5;
+  const g = rad(357.529 + 0.98560028 * d);
+  const q = 280.459 + 0.98564736 * d;
+  const L = rad(q + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g));
+  const e = rad(23.439 - 0.00000036 * d);
+  const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L));
+  const dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const gmst = (((18.697374558 + 24.06570982441908 * d) % 24) + 24) % 24;
+  const ha = rad(gmst * 15 + lon) - ra;
+  return deg(Math.asin(Math.sin(rad(lat)) * Math.sin(dec) + Math.cos(rad(lat)) * Math.cos(dec) * Math.cos(ha)));
+}
+const NIGHT_ALT = -3; // ab hier (Sonne 3° unter dem Horizont) Nachtkarte
+let mapReady = false; // wird true, sobald die Karte angelegt ist (vorher Kartenmitte aus dem Speicher)
+function sunNow() {
+  const v = LS.get('view', { c: [11.575, 48.137] });
+  const c = S.me || (mapReady ? center() : { lat: v.c[1], lon: v.c[0] });
+  return sunAlt(c.lat, c.lon);
+}
+const isNight = () =>
+  CFG.theme === 'dark' || (CFG.theme === 'system' && darkQ.matches) || (CFG.theme === 'auto' && sunNow() < NIGHT_ALT);
+const wantStyle = () => (CFG.mapType === 'sat' ? 'sat' : isNight() ? 'dark' : 'light');
+// Farben für Route und App
+const COLORS = {
+  blue: ['Blau', '#1d8cff', '#0a4fb8', '#007aff'],
+  orange: ['Orange', '#ff8a00', '#c25e00', '#f57c00'],
+  green: ['Grün', '#2fbf5b', '#1b8a3d', '#1fa34a'],
+  purple: ['Lila', '#a259ff', '#6d2fd1', '#8e44ec'],
+  pink: ['Pink', '#ff3b8d', '#c4125d', '#e0246f'],
+  red: ['Rot', '#ff4b3e', '#b8231a', '#e5372b'],
+  teal: ['Türkis', '#18c2d6', '#0b8796', '#0aa3b5']
+};
+const routeCol = () => COLORS[CFG.routeColor] || COLORS.blue;
+function applyAccent() {
+  document.documentElement.style.setProperty('--blue', (COLORS[CFG.accent] || COLORS.blue)[3]);
+}
+applyAccent();
 let curStyle = wantStyle();
 const last = LS.get('view', { c: [11.575, 48.137], z: 12 });
 const map = new maplibregl.Map({
@@ -1751,14 +1812,37 @@ map.addControl(
   'top-left'
 );
 map.touchZoomRotate.enableRotation();
+mapReady = true;
+// Oberfläche hell/dunkel, Karte sanft dimmen und erst in der Nacht auf die Nachtkarte wechseln
+function applyUi() {
+  const dark = isNight();
+  document.documentElement.dataset.ui = dark ? 'dark' : 'light';
+  document.querySelectorAll('meta[name=theme-color]').forEach(m => (m.content = dark ? '#1c1c1e' : '#ffffff'));
+  // Dämmerung: von Sonne +4° bis -3° langsam bis auf 65 % Helligkeit abdunkeln (nur bei heller Karte)
+  let b = 1;
+  if (CFG.theme === 'auto' && curStyle !== 'dark') {
+    const t = Math.max(0, Math.min(1, (4 - sunNow()) / 7));
+    b = 1 - 0.35 * t;
+  }
+  const cv = map.getCanvas();
+  cv.style.filter = b < 0.99 ? `brightness(${b.toFixed(3)})` : '';
+}
 function setTheme() {
   const w = wantStyle();
-  if (w !== curStyle) {
-    curStyle = w;
+  applyUi();
+  if (w === curStyle) return;
+  curStyle = w;
+  const box = map.getContainer();
+  box.style.opacity = '0.35'; // kurz ausblenden, dann neuen Stil laden – kein harter Sprung
+  setTimeout(() => {
     map.setStyle(STYLE[w], { diff: false });
-  }
+    map.once('idle', () => (box.style.opacity = '1'));
+    setTimeout(() => (box.style.opacity = '1'), 2500);
+  }, 450);
 }
 darkQ.addEventListener?.('change', setTheme);
+setInterval(setTheme, 60000); // Sonnenstand jede Minute neu prüfen
+applyUi();
 const EMPTY = { type: 'FeatureCollection', features: [] };
 const GEO = { alt: EMPTY, route: EMPTY };
 
@@ -1809,8 +1893,8 @@ function routeProgress(p) {
       map.setPaintProperty('route-case', 'line-gradient', undefined);
       return;
     }
-    map.setPaintProperty('route-line', 'line-gradient', progGrad(p, '#9aa4b0', '#1d8cff'));
-    map.setPaintProperty('route-case', 'line-gradient', progGrad(p, '#7d8691', '#0a4fb8'));
+    map.setPaintProperty('route-line', 'line-gradient', progGrad(p, '#9aa4b0', routeCol()[1]));
+    map.setPaintProperty('route-case', 'line-gradient', progGrad(p, '#7d8691', routeCol()[2]));
   } catch (e) {}
 }
 
@@ -1928,11 +2012,11 @@ function addLayers() {
   L('alt-case', 'alt', { 'line-color': '#7d8a99', 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 6, 16, 13] });
   L('alt-line', 'alt', { 'line-color': '#b8c4d2', 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 4, 16, 9] });
   L('route-case', 'route', {
-    'line-color': '#0a4fb8',
+    'line-color': routeCol()[2],
     'line-width': ['interpolate', ['linear'], ['zoom'], 10, 7, 16, 15, 19, 24]
   });
   L('route-line', 'route', {
-    'line-color': '#1d8cff',
+    'line-color': routeCol()[1],
     'line-width': ['interpolate', ['linear'], ['zoom'], 10, 4.5, 16, 10, 19, 17]
   });
 }
@@ -4118,17 +4202,45 @@ function settings() {
   </div>
   <div class="sec">Karte</div>
   <div class="group"><div class="set"><span>Kartentyp</span><select id="mtype"><option value="std" ${CFG.mapType !== 'sat' ? 'selected' : ''}>Standard</option><option value="sat" ${CFG.mapType === 'sat' ? 'selected' : ''}>Satellit</option></select></div><div class="set"><span>Darstellung</span><select id="theme">${[
-    ['auto', 'Automatisch'],
-    ['light', 'Hell'],
-    ['dark', 'Dunkel']
+    ['auto', 'Automatisch (Tag/Nacht)'],
+    ['system', 'Wie das iPhone'],
+    ['light', 'Immer hell'],
+    ['dark', 'Immer dunkel']
   ]
     .map(([v, l]) => `<option value="${v}" ${CFG.theme === v ? 'selected' : ''}>${l}</option>`)
     .join('')}</select></div></div>
+  ${CFG.theme === 'auto' ? `<div class="sub" style="margin-top:6px;font-size:13px">Die Karte dunkelt in der Dämmerung langsam ab und wechselt erst bei Dunkelheit auf die Nachtkarte. Sonne gerade: ${Math.round(sunNow())}° ${sunNow() >= 0 ? 'über' : 'unter'} dem Horizont.</div>` : ''}
+  <div class="sec">Farben</div>
+  <div class="group">
+    <div class="set"><span>Route</span><div class="swatches">${Object.entries(COLORS).map(([k, c]) => `<button class="swatch${CFG.routeColor === k ? ' on' : ''}" data-rc="${k}" style="background:${c[1]}" aria-label="Route ${c[0]}"></button>`).join('')}</div></div>
+    <div class="set"><span>App</span><div class="swatches">${Object.entries(COLORS).map(([k, c]) => `<button class="swatch${CFG.accent === k ? ' on' : ''}" data-ac="${k}" style="background:${c[3]}" aria-label="App-Farbe ${c[0]}"></button>`).join('')}</div></div>
+  </div>
   <div class="sub" style="margin:16px 0 4px;font-size:13px">${isAM() ? 'Im AM-Modus plant Navi 45 Routen für höchstens 45 km/h – ohne Autobahn und Kraftfahrstraße. Rot markierte Straßen sind für Sie verboten. ' : ''}Karten, Adressen, Läden und Tempolimits kommen aus OpenStreetMap: meist sehr genau, aber nicht fehlerfrei. Wo kein Tempolimit eingetragen ist, zeigt die App kein Schild. Verkehrsschilder gehen immer vor.</div>`,
     'full'
   );
   const save = () => LS.set('cfg', CFG);
   $('x').onclick = () => home();
+  $('body').querySelectorAll('[data-rc]').forEach(
+    b =>
+      (b.onclick = () => {
+        CFG.routeColor = b.dataset.rc;
+        save();
+        try {
+          map.setPaintProperty('route-line', 'line-color', routeCol()[1]);
+          map.setPaintProperty('route-case', 'line-color', routeCol()[2]);
+        } catch (e) {}
+        settings();
+      })
+  );
+  $('body').querySelectorAll('[data-ac]').forEach(
+    b =>
+      (b.onclick = () => {
+        CFG.accent = b.dataset.ac;
+        save();
+        applyAccent();
+        settings();
+      })
+  );
   $('vSel').onchange = e => {
     CFG.voice = e.target.value;
     save();

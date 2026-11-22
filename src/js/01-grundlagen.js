@@ -24,6 +24,8 @@ const CFG = Object.assign(
     quiet: false,
     noUnpaved: true,
     theme: 'auto',
+    routeColor: 'blue',
+    accent: 'blue',
     mapType: 'std',
     hint: true,
     vehicle: 'am',

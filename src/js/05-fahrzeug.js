@@ -44,7 +44,7 @@ function routeProgress(p) {
       map.setPaintProperty('route-case', 'line-gradient', undefined);
       return;
     }
-    map.setPaintProperty('route-line', 'line-gradient', progGrad(p, '#9aa4b0', '#1d8cff'));
-    map.setPaintProperty('route-case', 'line-gradient', progGrad(p, '#7d8691', '#0a4fb8'));
+    map.setPaintProperty('route-line', 'line-gradient', progGrad(p, '#9aa4b0', routeCol()[1]));
+    map.setPaintProperty('route-case', 'line-gradient', progGrad(p, '#7d8691', routeCol()[2]));
   } catch (e) {}
 }

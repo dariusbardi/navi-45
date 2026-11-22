@@ -9,11 +9,11 @@ function addLayers() {
   L('alt-case', 'alt', { 'line-color': '#7d8a99', 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 6, 16, 13] });
   L('alt-line', 'alt', { 'line-color': '#b8c4d2', 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 4, 16, 9] });
   L('route-case', 'route', {
-    'line-color': '#0a4fb8',
+    'line-color': routeCol()[2],
     'line-width': ['interpolate', ['linear'], ['zoom'], 10, 7, 16, 15, 19, 24]
   });
   L('route-line', 'route', {
-    'line-color': '#1d8cff',
+    'line-color': routeCol()[1],
     'line-width': ['interpolate', ['linear'], ['zoom'], 10, 4.5, 16, 10, 19, 17]
   });
 }

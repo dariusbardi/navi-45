@@ -34,17 +34,45 @@ function settings() {
   </div>
   <div class="sec">Karte</div>
   <div class="group"><div class="set"><span>Kartentyp</span><select id="mtype"><option value="std" ${CFG.mapType !== 'sat' ? 'selected' : ''}>Standard</option><option value="sat" ${CFG.mapType === 'sat' ? 'selected' : ''}>Satellit</option></select></div><div class="set"><span>Darstellung</span><select id="theme">${[
-    ['auto', 'Automatisch'],
-    ['light', 'Hell'],
-    ['dark', 'Dunkel']
+    ['auto', 'Automatisch (Tag/Nacht)'],
+    ['system', 'Wie das iPhone'],
+    ['light', 'Immer hell'],
+    ['dark', 'Immer dunkel']
   ]
     .map(([v, l]) => `<option value="${v}" ${CFG.theme === v ? 'selected' : ''}>${l}</option>`)
     .join('')}</select></div></div>
+  ${CFG.theme === 'auto' ? `<div class="sub" style="margin-top:6px;font-size:13px">Die Karte dunkelt in der Dämmerung langsam ab und wechselt erst bei Dunkelheit auf die Nachtkarte. Sonne gerade: ${Math.round(sunNow())}° ${sunNow() >= 0 ? 'über' : 'unter'} dem Horizont.</div>` : ''}
+  <div class="sec">Farben</div>
+  <div class="group">
+    <div class="set"><span>Route</span><div class="swatches">${Object.entries(COLORS).map(([k, c]) => `<button class="swatch${CFG.routeColor === k ? ' on' : ''}" data-rc="${k}" style="background:${c[1]}" aria-label="Route ${c[0]}"></button>`).join('')}</div></div>
+    <div class="set"><span>App</span><div class="swatches">${Object.entries(COLORS).map(([k, c]) => `<button class="swatch${CFG.accent === k ? ' on' : ''}" data-ac="${k}" style="background:${c[3]}" aria-label="App-Farbe ${c[0]}"></button>`).join('')}</div></div>
+  </div>
   <div class="sub" style="margin:16px 0 4px;font-size:13px">${isAM() ? 'Im AM-Modus plant Navi 45 Routen für höchstens 45 km/h – ohne Autobahn und Kraftfahrstraße. Rot markierte Straßen sind für Sie verboten. ' : ''}Karten, Adressen, Läden und Tempolimits kommen aus OpenStreetMap: meist sehr genau, aber nicht fehlerfrei. Wo kein Tempolimit eingetragen ist, zeigt die App kein Schild. Verkehrsschilder gehen immer vor.</div>`,
     'full'
   );
   const save = () => LS.set('cfg', CFG);
   $('x').onclick = () => home();
+  $('body').querySelectorAll('[data-rc]').forEach(
+    b =>
+      (b.onclick = () => {
+        CFG.routeColor = b.dataset.rc;
+        save();
+        try {
+          map.setPaintProperty('route-line', 'line-color', routeCol()[1]);
+          map.setPaintProperty('route-case', 'line-color', routeCol()[2]);
+        } catch (e) {}
+        settings();
+      })
+  );
+  $('body').querySelectorAll('[data-ac]').forEach(
+    b =>
+      (b.onclick = () => {
+        CFG.accent = b.dataset.ac;
+        save();
+        applyAccent();
+        settings();
+      })
+  );
   $('vSel').onchange = e => {
     CFG.voice = e.target.value;
     save();
